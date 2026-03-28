@@ -14,6 +14,7 @@ const storageRoot = path.resolve(process.env.SIGN_STORAGE_DIR || path.join(appRo
 const upload = multer({ storage: multer.memoryStorage(), limits: { fileSize: 50 * 1024 * 1024 } });
 const ALLOWED_SIGNING_METHODS = new Set(['iit-token', 'privatbank-jks']);
 const SENSITIVE_FIELD_PATTERN = /(password|pass|pin|secret|privatekey|private_key|signaturebase64|filebase64|raw|binary|content|buffer|data)$/i;
+const EXTRA_PROXY_ALLOWED_HOSTS = new Set(['zc.bank.gov.ua']);
 
 app.disable('x-powered-by');
 app.use(express.json({ limit: '10mb' }));
@@ -67,6 +68,7 @@ async function getProxyAllowedHosts() {
         addHostToAllowList(ca?.ldapAddress, hosts);
       }
 
+      for (const host of EXTRA_PROXY_ALLOWED_HOSTS) hosts.add(host);
       return hosts;
     })().catch((error) => {
       proxyAllowedHostsPromise = null;
