@@ -1,97 +1,104 @@
 # VilnoCheck-SignService
 
-Standalone multi-method signing service for **VilnoCheck / PRRO** workflows.
+Окремий сервіс підпису для **VilnoCheck / ПРРО** з підтримкою кількох методів накладання КЕП.
 
-The service is designed to sign documents in a browser-first flow while keeping the backend as **crypto-blind** as possible for local-key scenarios.
-
-## What this service is for
-
-VilnoCheck-SignService provides one web UI and one lightweight backend for three classes of signing methods:
-
-1. **Hardware token**
-   - IIT local agent / browser integration
-   - Crystal / Алмаз / similar token flows
-2. **File key**
-   - PrivatBank `.jks`
-   - also intended path for `.p12` / `.pfx` style file keys
-3. **Cloud signing**
-   - PrivatBank **SmartID**
-   - browser/KSP-driven confirmation flow
-
-It can be used in two modes:
-- **Manual signing UI** — user opens the page, uploads a document, signs it, downloads the package
-- **Integration/session flow** — another system prepares the document and uses the service API/session model to receive the final detached signature package
+Сервіс призначений для роботи в українському контексті:
+- українські КЕП/УЕП
+- українські КНЕДП
+- підпис документів для бізнес-процесів
+- підпис у сценаріях, пов'язаних із ПРРО / фіскалізацією
 
 ---
 
-## Current status
+## Призначення сервісу
 
-## Working now
+`VilnoCheck-SignService` дає один веб-інтерфейс і один легкий бекенд для трьох класів підпису:
 
-### Hardware token
-- IIT browser integration is wired
-- token-based signing flow exists in the UI
-- detached signature upload + ZIP packaging works
+1. **Апаратний токен**
+   - IIT local agent / browser integration
+   - Crystal / Алмаз / подібні сценарії
+2. **Файловий ключ**
+   - PrivatBank `.jks`
+   - також цільовий шлях для `.p12` / `.pfx`
+3. **Хмарний підпис**
+   - PrivatBank **SmartID**
+   - KSP/browser-driven flow
 
-### File key (PrivatBank JKS)
-- method switching works
-- JKS container listing works
-- JKS key reading works
-- PKI proxy path for OCSP/TSP/CMP is implemented
-- NBU OCSP host allow-list fix is included
-- browser-side detached signing flow is implemented
+Сервіс можна використовувати у двох режимах:
+- **ручний веб-режим** — користувач відкриває сторінку, завантажує документ, підписує, завантажує пакет
+- **інтеграційний режим** — інша система формує документ/сесію, а сервіс приймає вже готовий підпис і формує артефакти
+
+---
+
+## Поточний стан
+
+## Що вже працює
+
+### Апаратний токен
+- інтеграція з IIT browser stack підключена
+- токеновий flow у веб-інтерфейсі реалізований
+- завантаження документа, підпис і формування ZIP-пакета працюють
+
+### Файловий ключ (PrivatBank JKS)
+- перемикання на метод файлового підпису працює
+- читання списку ключів з JKS працює
+- зчитування ключа з контейнера працює
+- реалізовано PKI-proxy для OCSP/TSP/CMP
+- додано allow-list для потрібних OCSP-хостів
+- браузерний detached-підпис для JKS реалізований
 
 ### SmartID
-- SmartID is added as the **third signing method**
-- provider probe endpoint exists
-- SmartID UI panels/states are present
-- SmartID QR/deep-link state handling is scaffolded
-- SmartID KSP binding through `@it-enterprise/digital-signature` is wired
+- SmartID доданий як **третій метод підпису**
+- є provider probe endpoint
+- є базовий SmartID UI/state flow
+- є QR / deep-link логіка на рівні інтерфейсу
+- є підключення через `@it-enterprise/digital-signature`
 
-## Still needs real-world confirmation
+## Що ще потребує підтвердження в реальних умовах
 
-### SmartID production confirmation
-The SmartID method is implemented as a **working prototype layer**, but still needs real-world verification with:
-- a real SmartID-enabled Privat24 account
-- real QR/deep-link confirmation in Privat24
-- confirmation that the current `SMARTID_CLIENT_ID_PREFIX` is acceptable for production
-- final workstation/browser validation on the target environment
+### SmartID
+SmartID уже реалізований як **живий прототип**, але ще потребує підтвердження на реальному акаунті:
+- реальний SmartID-enabled акаунт Privat24
+- реальне підтвердження через QR / deep link
+- підтвердження правильного `SMARTID_CLIENT_ID_PREFIX`
+- перевірка поведінки у цільовому браузері та мережі
 
-### General hardening still pending
-- backend signature verification before accept
-- cleanup of deployment/process management
-- stronger auth/session ownership controls
-- better production docs around reverse proxy and deployment
-
----
-
-## Architecture
-
-## Local-key methods: crypto-blind backend
-
-For these methods, the private key must never reach the backend:
-- hardware token
-- file key (JKS/P12/PFX)
-
-Flow:
-1. browser uploads document
-2. backend stores document and returns payload
-3. browser signs locally via SDK / local agent
-4. browser uploads detached signature
-5. backend stores signature and returns ZIP package
-
-## Cloud method: coordinated browser/provider flow
-
-For SmartID, the service is still browser-driven, but confirmation happens in the provider flow:
-1. browser starts SmartID key-read/sign request
-2. SDK obtains QR/deep-link / confirmation state
-3. user confirms in Privat24
-4. browser receives final signature
-5. backend stores detached signature and packages result
+### Загальне допрацювання
+Ще потрібно доробити:
+- повну верифікацію підпису на бекенді перед прийманням
+- кращу модель захисту session/document ownership
+- нормалізований деплой (systemd / pm2 / окрема схема запуску)
+- кращу документацію по reverse proxy
 
 ---
 
-## Repository structure
+## Архітектура
+
+## Локальні методи: бекенд не працює з приватним ключем
+
+Для цих методів приватний ключ не має потрапляти на сервер:
+- апаратний токен
+- файловий ключ
+
+Потік такий:
+1. браузер завантажує документ на бекенд
+2. бекенд зберігає документ і повертає payload
+3. браузер підписує локально через SDK / local agent
+4. браузер віддає detached signature назад
+5. бекенд зберігає підпис і формує ZIP-пакет
+
+## Хмарний метод: координований flow через провайдера
+
+Для SmartID підтвердження відбувається у провайдера:
+1. браузер запускає SmartID flow
+2. SDK формує QR / deep link / confirmation state
+3. користувач підтверджує у Privat24
+4. браузер отримує готовий підпис
+5. бекенд зберігає detached signature і формує пакет
+
+---
+
+## Структура репозиторію
 
 ```text
 VilnoCheck-SignService/
@@ -100,7 +107,7 @@ VilnoCheck-SignService/
 │       ├── 01-kep-ukraine-fiscal.md
 │       ├── 02-chrome-agent-crystal1.md
 │       ├── 03-iit-agent-crystal1-dia.md
-│       └── additional research docs from the repo
+│       └── інші дослідницькі файли з репозиторію
 ├── public/
 │   ├── assets/
 │   │   └── app.js
@@ -125,71 +132,72 @@ VilnoCheck-SignService/
 
 ---
 
-## Runtime API
+## API сервісу
 
-## Health and bootstrap
+## Службові endpoints
 
 ### `GET /api/health`
-Returns service health/version.
+Повертає health/version сервісу.
 
 ### `GET /api/bootstrap`
-Returns enabled methods and runtime bootstrap metadata.
+Повертає bootstrap-дані для клієнта:
+- доступні методи підпису
+- увімкнені провайдери
+- стартову конфігурацію для UI
 
 ---
 
-## Document/signature flow
+## Потік документа і підпису
 
 ### `POST /api/documents`
-Upload a document for signing.
+Завантаження документа для підпису.
 
-Returns:
+Повертає:
 - `documentId`
-- file metadata
+- метадані файлу
 - `signingPayloadBase64`
 - bootstrap/session metadata
 
 ### `PATCH /api/documents/:documentId/session`
-Update session metadata for the current signing method.
-
-Used by the browser to persist safe session state.
+Оновлення session metadata для поточного методу підпису.
 
 ### `POST /api/documents/:documentId/signature`
-Upload detached signature payload.
+Завантаження detached signature.
 
-Stores:
-- detached signature bytes
-- signing method metadata
+Зберігає:
+- байти підпису
+- метод підпису
 - signature info
-- sanitized session/client metadata
+- очищені session/client metadata
 
 ### `GET /api/documents/:documentId/package`
-Download ZIP package containing:
-- original document
+Завантаження ZIP-пакета з:
+- оригінальним документом
 - detached signature
 - `manifest.json`
 
 ---
 
-## SmartID-specific endpoint
+## SmartID provider endpoint
 
 ### `GET /api/providers/privatbank-smartid`
-Returns provider configuration metadata.
+Повертає metadata SmartID provider.
 
 ### `GET /api/providers/privatbank-smartid?probe=1`
-Performs a live provider reachability probe.
+Пробує зв'язок із провайдером у live-режимі.
 
-Expected use:
-- check SmartID provider availability before starting the flow
-- confirm that SmartID certificates endpoint is reachable
+Використання:
+- перевірити доступність SmartID перед стартом flow
+- підтвердити, що endpoint сертифікатів відповідає
 
 ---
 
-## Environment variables
+## Змінні середовища
 
-## General
-- `PORT` — service port
+## Загальні
+- `PORT` — порт сервісу
 - `HOST` — bind host
-- `SIGN_STORAGE_DIR` — storage path override
+- `SIGN_STORAGE_DIR` — каталог для зберігання документів/підписів
 
 ## SmartID
 - `SMARTID_ENABLED=1|0`
@@ -200,27 +208,27 @@ Expected use:
 
 ---
 
-## Local development
+## Локальний запуск
 
-## Requirements
+## Вимоги
 - Node.js 22+
 - npm
-- for token/file-key/cloud browser flows: workstation browser environment
+- браузерне середовище для тестування token/file-key/cloud flows
 
-## Install
+## Встановлення
 
 ```bash
 npm install
 npm run build
 ```
 
-## Run
+## Запуск
 
 ```bash
 npm start
 ```
 
-Default local URL:
+Типовий локальний URL:
 
 ```text
 http://127.0.0.1:3017
@@ -228,15 +236,15 @@ http://127.0.0.1:3017
 
 ---
 
-## Build
+## Збірка
 
-Client bundle is built with `esbuild` via:
+Клієнтський bundle збирається через `esbuild`:
 
 ```bash
 npm run build:client
 ```
 
-Full build:
+Повна збірка:
 
 ```bash
 npm run build
@@ -244,128 +252,122 @@ npm run build
 
 ---
 
-## Deployment notes
+## Примітки по деплою
 
 ## Reverse proxy
-If deployed behind nginx / openresty / NPM, make sure the following routes are passed through correctly:
+Якщо сервіс працює за nginx / openresty / NPM, треба правильно прокидати:
 - `/api/health`
 - `/api/bootstrap`
 - `/api/documents/*`
 - `/api/providers/*`
 - `/pki/ProxyHandler`
-- static assets under `/assets/*`
+- `/assets/*`
 
-A common failure mode is serving the UI but not forwarding `/api/bootstrap`, which causes the browser app to render partially and fail during initialization.
+Типовий збій: UI відкривається, але `/api/bootstrap` не прокидається — тоді фронтенд рендериться частково й падає під час ініціалізації.
 
 ## PKI proxy
-The service includes a **same-origin PKI proxy** for browser-side OCSP/TSP/CMP access used in file-key flows.
-It is allow-listed and should not be turned into an open relay.
+Сервіс містить **same-origin PKI proxy** для browser-side доступу до OCSP/TSP/CMP у file-key flow.
+Це дозволений проксі з allow-list, а не open relay.
 
 ---
 
-## Security notes
+## Нотатки по безпеці
 
-### Good current properties
-- passwords/PINs/secrets are redacted from persisted session metadata
-- file-key and token methods keep private key usage client-side
-- SmartID confirmation happens provider-side / SDK-side, not on the backend
+## Що вже добре
+- PIN/password/secret вирізаються із session metadata перед збереженням
+- file-key і token методи не виносять приватний ключ на сервер
+- SmartID підтвердження відбувається на стороні провайдера/SDK
 
-### Important limitations right now
-- backend does **not yet fully verify uploaded signatures** before storing them
-- session ownership/auth is still lightweight
-- current deployment is manually started, not yet formalized via service manager
-- SmartID should still be treated as **prototype / experimental** until confirmed end-to-end with a real account
+## Що ще потрібно доробити
+- повна верифікація підпису перед прийняттям на бекенді
+- жорсткіша модель session ownership/auth
+- нормалізований продовий запуск
+- підтвердження production-поведінки SmartID
 
 ---
 
-## Known issues / caveats
+## Відомі обмеження / caveats
 
 ### SmartID
-- current implementation is promising, but still needs a real production-style browser + Privat24 confirmation test
-- the current `SMARTID_CLIENT_ID_PREFIX` may need confirmation/replacement for production
-- browser/reverse proxy routing must correctly expose `/api/bootstrap`
+- поточна реалізація вже жива, але ще не підтверджена end-to-end на реальному акаунті Privat24
+- `SMARTID_CLIENT_ID_PREFIX` може потребувати окремого підтвердження для production
+- reverse proxy має правильно віддавати `/api/bootstrap`
 
 ### File-key flow
-- browser PKI behavior depends on workstation network conditions, CA endpoints, and proxy/revocation routing
-- OCSP/TSP/CMP routing is handled through same-origin PKI proxy, but target host allow-list must stay current
+- browser-side PKI залежить від мережі, CA endpoints і проксі-маршруту
+- allow-list для OCSP/TSP/CMP має лишатися актуальним
 
-### Deployment
-- current live deployment is manual
-- one repo/service may be reachable by direct port while domain proxy still points elsewhere if reverse proxy is not updated
+### Деплой
+- поточний live деплой запускається вручну
+- можливий сценарій, коли прямий порт уже віддає нову версію, а домен ще дивиться в старий upstream
 
 ---
 
-## Suggested operator test checklist
+## Рекомендований чекліст тестування
 
-## Hardware token
-1. Open the service
-2. Upload a document
-3. Choose hardware token method
-4. Detect IIT agent
-5. Read token key/certificate
-6. Sign document
-7. Download ZIP
+## Апаратний токен
+1. Відкрити сервіс
+2. Завантажити документ
+3. Обрати метод апаратного токена
+4. Перевірити IIT agent
+5. Зчитати ключ/сертифікат
+6. Підписати документ
+7. Завантажити ZIP
 
-## File key
-1. Open the service
-2. Upload a document
-3. Choose PrivatBank JKS method
-4. Select `.jks`
-5. Read key/certificate
-6. Sign document
-7. Download ZIP
+## Файловий ключ
+1. Відкрити сервіс
+2. Завантажити документ
+3. Обрати PrivatBank JKS
+4. Вибрати `.jks`
+5. Зчитати ключ/сертифікат
+6. Підписати документ
+7. Завантажити ZIP
 
 ## SmartID
-1. Open the service
-2. Upload a document
-3. Choose SmartID method
-4. Read key/certificate via SmartID
-5. Confirm in Privat24 via QR/deep-link
-6. Sign document
-7. Download ZIP
+1. Відкрити сервіс
+2. Завантажити документ
+3. Обрати SmartID
+4. Зчитати ключ/сертифікат через SmartID
+5. Підтвердити в Privat24 через QR / deep link
+6. Підписати документ
+7. Завантажити ZIP
 
 ---
 
-## Roadmap
+## Дорожня карта
 
-## Near-term
-- verify SmartID end-to-end with a real account
-- add backend signature verification before accept
-- clean deployment/process management
-- improve reverse proxy/deployment documentation
+## Найближчі кроки
+- підтвердити SmartID end-to-end на реальному акаунті
+- додати верифікацію підпису перед прийняттям на бекенді
+- навести лад із деплоєм і process management
+- дописати документацію по reverse proxy
 
-## Mid-term
-- stabilize SmartID UX
-- improve session security model
-- formalize API contracts and operator docs
-- better packaging and verification metadata
-
-## Later
-- tighter PRRO integration
-- batch signing scenarios where provider allows it
-- stronger observability and audit logging
+## Далі
+- стабілізація SmartID UX
+- покращення session security model
+- нормалізація API-контракту
+- глибша інтеграція з ПРРО
 
 ---
 
-## Research basis
+## База досліджень
 
-This repo includes research docs covering:
-- Ukrainian KEP and fiscal receipt signing
-- IIT local agent + hardware token flows
-- KНЕДП Дія / IIT agent integration
-- PrivatBank file-key (JKS) signing
+У repo вже є дослідницькі матеріали по:
+- українських КЕП та фіскалізації
+- IIT local agent + токенах
+- КНЕДП Дія / IIT agent integration
+- PrivatBank file-key (JKS)
 - PrivatBank SmartID / cloud signing
 
-See:
+Дивись:
 - `docs/research/`
 
 ---
 
-## Honest status summary
+## Чесне резюме стану
 
-If you need the shortest truthful statement:
+Якщо зовсім коротко:
 
-- **Hardware token:** implemented
-- **File key:** implemented
-- **SmartID:** implemented as a live prototype, still requires real-account end-to-end confirmation
-
+- **Апаратний токен:** реалізовано
+- **Файловий ключ:** реалізовано
+- **SmartID:** реалізовано як живий прототип, який ще треба підтвердити на реальному акаунті end-to-end
