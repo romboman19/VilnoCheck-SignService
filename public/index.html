@@ -1,0 +1,202 @@
+<!doctype html>
+<html lang="uk">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>OpenPRRO Sign Service</title>
+    <link rel="stylesheet" href="/styles.css" />
+  </head>
+  <body>
+    <main>
+      <section class="hero">
+        <div class="badges">
+          <span class="badge">IIT token</span>
+          <span class="badge">PrivatBank JKS</span>
+          <span class="badge">CAdES detached</span>
+        </div>
+        <h1>Підпис документів для OpenPRRO</h1>
+        <p>
+          Сервіс підписує документ локально на робочому місці та формує ZIP-пакет із оригіналом,
+          відокремленим підписом і метаданими. Підтримуються два режими: апаратний токен через IIT
+          browser integration та файловий ключ PrivatBank у форматі <span class="code">.jks</span>.
+        </p>
+      </section>
+
+      <section class="layout">
+        <div class="grid">
+          <section class="panel">
+            <h2>1. Метод підписання</h2>
+            <div class="method-grid">
+              <label class="method-card active" data-method="iit-token">
+                <input type="radio" name="signingMethod" value="iit-token" checked />
+                <span class="method-card-title">IIT / апаратний токен</span>
+                <span class="small">
+                  Поточний виробничий режим: Crystal-1 або сумісний носій, IIT browser extension,
+                  локальний IIT agent, PIN токена.
+                </span>
+              </label>
+
+              <label class="method-card" data-method="privatbank-jks">
+                <input type="radio" name="signingMethod" value="privatbank-jks" />
+                <span class="method-card-title">PrivatBank / файловий ключ .jks</span>
+                <span class="small">
+                  Браузерний режим без токена: вибір локального <span class="code">.jks</span> контейнера,
+                  пароль від контейнера та підпис на клієнті без передачі ключа на бекенд.
+                </span>
+              </label>
+            </div>
+            <div class="note" style="margin-top: 14px;">
+              <strong>Важливо:</strong> приватний ключ і пароль залишаються на робочому місці.
+              Бекенд OpenPRRO отримує лише вже створений підпис та безпечні метадані сесії.
+            </div>
+          </section>
+
+          <section class="panel">
+            <h2>2. Підготовка клієнта</h2>
+
+            <div id="tokenPanel" class="panel-stack">
+              <div class="note">
+                <strong>Для IIT / токена потрібно один раз налаштувати робоче місце:</strong>
+                <ul>
+                  <li>Chrome або Edge</li>
+                  <li>встановлене IIT browser extension</li>
+                  <li>встановлені IIT web libraries / local agent</li>
+                  <li>додайте цей сайт до trusted sites, якщо IIT попросить</li>
+                  <li>встановлені драйвери / middleware для Crystal-1</li>
+                </ul>
+              </div>
+              <div class="actions">
+                <button id="detectAgentBtn">Перевірити IIT agent</button>
+                <button id="refreshMediaBtn" class="secondary">Оновити носії</button>
+              </div>
+              <div id="agentStatus" class="status-box">
+                Очікується перевірка IIT agent…
+              </div>
+            </div>
+
+            <div id="jksPanel" class="panel-stack hidden">
+              <div class="note">
+                <strong>Для PrivatBank JKS режиму:</strong>
+                <ul>
+                  <li>вистачає сучасного браузера з підтримкою web worker</li>
+                  <li>оберіть локальний <span class="code">.jks</span> контейнер у блоці нижче</li>
+                  <li>пароль контейнера використовується лише локально в браузері</li>
+                  <li>IIT extension / hardware token для цього режиму не потрібні</li>
+                </ul>
+              </div>
+              <div id="fileModeStatus" class="status-box"></div>
+            </div>
+          </section>
+
+          <section class="panel">
+            <h2>3. Завантаження документа</h2>
+            <div class="grid two">
+              <label>
+                Документ для підпису
+                <input id="documentInput" type="file" />
+              </label>
+              <div class="actions" style="align-self: end;">
+                <button id="uploadDocumentBtn">Завантажити документ</button>
+              </div>
+            </div>
+            <div id="documentStatus" class="status-box" style="margin-top: 14px;">
+              Документ ще не завантажено.
+            </div>
+          </section>
+
+          <section class="panel">
+            <h2>4. Доступ до ключа</h2>
+            <div class="grid">
+              <label>
+                ЦСК / issuer CN
+                <select id="caSelect">
+                  <option value="">Автовизначення</option>
+                </select>
+              </label>
+            </div>
+
+            <div id="tokenPanelKey" class="panel-stack" data-method-panel="iit-token" style="margin-top: 14px;">
+              <div class="grid two">
+                <label>
+                  Токен / рідер
+                  <select id="keyMediaSelect">
+                    <option value="">Спочатку перевірте IIT agent</option>
+                  </select>
+                </label>
+                <label>
+                  PIN токена
+                  <input id="pinInput" type="password" placeholder="Введіть PIN" autocomplete="off" />
+                </label>
+              </div>
+              <div class="actions">
+                <button id="readKeyBtn">Зчитати ключ / сертифікат</button>
+              </div>
+            </div>
+
+            <div id="jksPanelKey" class="panel-stack hidden" data-method-panel="privatbank-jks" style="margin-top: 14px;">
+              <div class="grid two">
+                <label>
+                  PrivatBank .jks контейнер
+                  <input id="jksFileInput" type="file" accept=".jks,application/octet-stream" />
+                </label>
+                <label>
+                  Ключ усередині контейнера
+                  <select id="jksKeySelect" disabled>
+                    <option value="">Спочатку оберіть .jks контейнер</option>
+                  </select>
+                </label>
+              </div>
+              <div id="jksStatus" class="status-box">
+                Оберіть PrivatBank .jks контейнер, щоб отримати список ключів усередині.
+              </div>
+              <div class="grid two">
+                <label>
+                  Пароль JKS контейнера
+                  <input id="jksPasswordInput" type="password" placeholder="Введіть пароль контейнера" autocomplete="off" />
+                </label>
+                <div class="actions" style="align-self: end;">
+                  <button id="readJksKeyBtn">Зчитати JKS ключ / сертифікат</button>
+                </div>
+              </div>
+            </div>
+
+            <div id="keyStatus" class="status-box" style="margin-top: 14px;">
+              Ключ ще не зчитано.
+            </div>
+          </section>
+
+          <section class="panel">
+            <h2>5. Підпис і пакет</h2>
+            <div class="actions">
+              <button id="signBtn">Підписати документ</button>
+              <button id="downloadBtn" class="secondary" disabled>Завантажити ZIP-пакет</button>
+            </div>
+            <div id="resultStatus" class="result-box" style="margin-top: 14px;">
+              Підпис ще не створено.
+            </div>
+          </section>
+        </div>
+
+        <aside class="grid">
+          <section class="panel">
+            <h3>Стан поточної сесії</h3>
+            <div class="kv" id="sessionInfo">
+              <div><span>Метод</span><span>—</span></div>
+              <div><span>Документ</span><span>—</span></div>
+              <div><span>SHA-256</span><span>—</span></div>
+              <div><span>Носій / ключ</span><span>—</span></div>
+              <div><span>Підписувач</span><span>—</span></div>
+            </div>
+          </section>
+
+          <section class="panel">
+            <h3>Журнал</h3>
+            <pre id="log" class="small">Готово до роботи.</pre>
+          </section>
+        </aside>
+      </section>
+    </main>
+
+    <script type="module" src="/assets/app.js"></script>
+  </body>
+</html>
