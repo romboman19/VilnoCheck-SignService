@@ -47,12 +47,11 @@
                 </span>
               </label>
 
-              <label class="method-card" data-method="privatbank-smartid">
-                <input type="radio" name="signingMethod" value="privatbank-smartid" />
-                <span class="method-card-title">PrivatBank SmartID / хмарний підпис</span>
+              <label class="method-card" data-method="smartid">
+                <input type="radio" name="signingMethod" value="smartid" />
+                <span class="method-card-title">SmartID / хмарний підпис</span>
                 <span class="small">
-                  Експериментальний QR / Privat24 режим через browser crypto library: ключ не зчитується
-                  з локального файлу або токена, підтвердження операцій виконується у мобільному застосунку.
+                  Експериментальний QR / Privat24 режим через browser crypto library: канонічний method id у сервісі — <span class="code">smartid</span>, а сам провайдер поки що прив'язаний до PrivatBank SmartID.
                 </span>
               </label>
             </div>
@@ -100,7 +99,7 @@
 
             <div id="smartIdPanel" class="panel-stack hidden">
               <div class="note">
-                <strong>Для PrivatBank SmartID режиму:</strong>
+                <strong>Для SmartID режиму:</strong>
                 <ul>
                   <li>потрібен сучасний браузер із web worker та доступом до PrivatBank SmartID API</li>
                   <li>ключ залишається у хмарному провайдері; на ПК немає локального <span class="code">.jks</span> або токена</li>
@@ -184,7 +183,7 @@
               </div>
             </div>
 
-            <div id="smartIdPanelKey" class="panel-stack hidden" data-method-panel="privatbank-smartid" style="margin-top: 14px;">
+            <div id="smartIdPanelKey" class="panel-stack hidden" data-method-panel="smartid" style="margin-top: 14px;">
               <div class="note">
                 <strong>Крок 1.</strong> Натисніть <span class="code">Зчитати ключ / сертифікат</span> — сервіс запросить у SmartID
                 публічну інформацію про ключ і покаже QR / deep link для підтвердження в Privat24.<br />

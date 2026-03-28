@@ -14,16 +14,19 @@ Standalone multi-method signing service for VilnoCheck / PRRO integrations.
 ### Working now
 - Hardware token signing via IIT local agent / browser integration
 - PrivatBank `.jks` browser-side signing flow
-- First SmartID / cloud-signing scaffold in UI + backend config route
-- SmartID provider probe via `GET /api/providers/privatbank-smartid?probe=1`
-- SmartID client flow wired through `@it-enterprise/digital-signature` KSP support:
-  - read cloud key / certificates with QR confirmation in Privat24
-  - sign document with a second QR / Privat24 confirmation
-  - upload detached signature and download ZIP package via existing backend flow
+- SmartID added as the canonical third signing method in service bootstrap + session metadata (`smartid`)
+- Legacy `privatbank-smartid` values are normalized server-side to `smartid` for backward compatibility
+- SmartID UI panels/states are present in the browser app, including QR / deep-link confirmation state boxes
+- SmartID provider config + probe endpoint exists: `GET /api/providers/privatbank-smartid?probe=1`
+- SmartID browser binding is wired through `@it-enterprise/digital-signature` KSP support so the app can attempt:
+  - certificate/key read via `readPrivateKeyKSP(...)`
+  - signing via `signDataEx(...)`
+  - detached signature upload + ZIP packaging through the existing backend flow
 
 ### Still needs real-world confirmation
 - Exact production `SMARTID_CLIENT_ID_PREFIX` accepted for this project/tenant
 - Browser/network/CORS behavior against real PrivatBank SmartID from the target workstation
+- Whether PrivatBank SmartID fully accepts this exact browser-direct KSP flow in production for both key-read and signing
 - Full end-to-end confirmation on a real SmartID-enabled account
 
 ### SmartID env knobs

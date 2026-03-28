@@ -10069,7 +10069,7 @@ var require_main = __commonJS({
     var SIGNING_METHOD = {
       IIT_TOKEN: "iit-token",
       PRIVATBANK_JKS: "privatbank-jks",
-      PRIVATBANK_SMARTID: "privatbank-smartid"
+      SMARTID: "smartid"
     };
     var els = {
       detectAgentBtn: document.getElementById("detectAgentBtn"),
@@ -10121,8 +10121,15 @@ var require_main = __commonJS({
       smartIdListenerRegistered: false,
       smartIdPendingAction: null,
       lastSignature: null,
-      packageUrl: null
+      packageUrl: null,
+      bootstrap: null
     };
+    function normalizeSigningMethod(method) {
+      const value = String(method || "").trim();
+      if (value === SIGNING_METHOD.PRIVATBANK_JKS) return SIGNING_METHOD.PRIVATBANK_JKS;
+      if (value === SIGNING_METHOD.SMARTID || value === "privatbank-smartid") return SIGNING_METHOD.SMARTID;
+      return SIGNING_METHOD.IIT_TOKEN;
+    }
     function log(message) {
       const line = `[${(/* @__PURE__ */ new Date()).toLocaleTimeString("uk-UA", { hour: "2-digit", minute: "2-digit", second: "2-digit" })}] ${message}`;
       els.log.textContent = `${line}
@@ -10149,7 +10156,7 @@ ${els.log.textContent}`.trim();
       switch (method) {
         case SIGNING_METHOD.PRIVATBANK_JKS:
           return "PrivatBank JKS";
-        case SIGNING_METHOD.PRIVATBANK_SMARTID:
+        case SIGNING_METHOD.SMARTID:
           return "PrivatBank SmartID";
         case SIGNING_METHOD.IIT_TOKEN:
         default:
@@ -10175,7 +10182,7 @@ ${els.log.textContent}`.trim();
         const alias = state.readedKeyMeta?.alias || "ключ";
         return `${fileName} · ${alias}`;
       }
-      if (state.signingMethod === SIGNING_METHOD.PRIVATBANK_SMARTID) {
+      if (state.signingMethod === SIGNING_METHOD.SMARTID) {
         return state.readedKeyMeta?.label || "SmartID cloud key";
       }
       return mediaLabel(state.readedKey.keyMedia);
@@ -10214,7 +10221,7 @@ ${els.log.textContent}`.trim();
           ca: selectedCA
         };
       }
-      if (state.signingMethod === SIGNING_METHOD.PRIVATBANK_SMARTID) {
+      if (state.signingMethod === SIGNING_METHOD.SMARTID) {
         return {
           ca: selectedCA,
           provider: state.smartIdProvider ? {
@@ -10378,6 +10385,45 @@ ${els.log.textContent}`.trim();
       setSmartIdStatus(makeSmartIdStatusHtml(state.smartIdProvider));
       setSmartIdConfirmStatus(makeSmartIdConfirmHtml(state.smartIdConfirmEvent));
     }
+    function setMethodAvailability(method, enabled, reason = "") {
+      const normalized = normalizeSigningMethod(method);
+      const input = els.signingMethodInputs.find((entry) => normalizeSigningMethod(entry.value) === normalized);
+      const card = els.methodCards.find((entry) => normalizeSigningMethod(entry.dataset.method) === normalized);
+      if (input) input.disabled = !enabled;
+      if (card) {
+        card.classList.toggle("disabled", !enabled);
+        if (reason) {
+          card.title = reason;
+        } else {
+          card.removeAttribute("title");
+        }
+      }
+    }
+    function applyBootstrap(bootstrap) {
+      if (!bootstrap || typeof bootstrap !== "object") return;
+      state.bootstrap = bootstrap;
+      if (bootstrap.providers?.smartId && !state.smartIdProvider) {
+        state.smartIdProvider = bootstrap.providers.smartId;
+      }
+      const smartIdMethod = Array.isArray(bootstrap.signingMethods) ? bootstrap.signingMethods.find((method) => normalizeSigningMethod(method?.id) === SIGNING_METHOD.SMARTID) : null;
+      if (smartIdMethod) {
+        const enabled = smartIdMethod.enabled !== false && bootstrap.providers?.smartId?.enabled !== false;
+        setMethodAvailability(SIGNING_METHOD.SMARTID, enabled, enabled ? "" : "SmartID вимкнений конфігурацією сервера");
+        if (!enabled && state.signingMethod === SIGNING_METHOD.SMARTID) {
+          state.signingMethod = SIGNING_METHOD.IIT_TOKEN;
+        }
+      }
+      refreshSmartIdUi();
+    }
+    async function loadBootstrap() {
+      const response = await fetch("/api/bootstrap");
+      const payload = await response.json();
+      if (!response.ok || !payload?.bootstrap) {
+        throw new Error(payload?.error || "bootstrap unavailable");
+      }
+      applyBootstrap(payload.bootstrap);
+      return payload.bootstrap;
+    }
     async function ensureSmartIdProviderLoaded() {
       if (state.smartIdProvider) return state.smartIdProvider;
       const fallback = {
@@ -10397,6 +10443,9 @@ ${els.log.textContent}`.trim();
           ...payload.provider,
           probe: payload.probe || null
         };
+        if (state.bootstrap?.providers?.smartId) {
+          state.bootstrap.providers.smartId = state.smartIdProvider;
+        }
       } catch (error) {
         log(`УВАГА: SmartID provider config fallback: ${error?.message || String(error)}`);
         state.smartIdProvider = fallback;
@@ -10491,7 +10540,7 @@ ${els.log.textContent}`.trim();
           refreshSmartIdUi();
           log(`SmartID: сформовано ${state.smartIdConfirmEvent.stage === "sign" ? "QR для підпису" : "QR для зчитування сертифіката"}.`);
           await syncSessionSafe({
-            signingMethod: SIGNING_METHOD.PRIVATBANK_SMARTID,
+            signingMethod: SIGNING_METHOD.SMARTID,
             status: state.smartIdConfirmEvent.stage === "sign" ? "smartid-sign-confirmation" : "smartid-key-confirmation",
             methodState: currentMethodState()
           });
@@ -10553,17 +10602,15 @@ ${els.log.textContent}`.trim();
       if (state.signingMethod === SIGNING_METHOD.PRIVATBANK_JKS) {
         return '<div class="status-line"><span class="dot warn"></span><span>Ключ із .jks контейнера ще не зчитано.</span></div>';
       }
-      if (state.signingMethod === SIGNING_METHOD.PRIVATBANK_SMARTID) {
+      if (state.signingMethod === SIGNING_METHOD.SMARTID) {
         return '<div class="status-line"><span class="dot warn"></span><span>SmartID ключ ще не зчитано. Підготуйте QR / deep link і підтвердьте операцію у Privat24.</span></div>';
       }
       return '<div class="status-line"><span class="dot warn"></span><span>Ключ із токена ще не зчитано.</span></div>';
     }
     async function setSigningMethod(method, { persist = true } = {}) {
-      if (method === SIGNING_METHOD.PRIVATBANK_JKS) {
-        state.signingMethod = SIGNING_METHOD.PRIVATBANK_JKS;
-      } else if (method === SIGNING_METHOD.PRIVATBANK_SMARTID) {
-        state.signingMethod = SIGNING_METHOD.PRIVATBANK_SMARTID;
-      } else {
+      state.signingMethod = normalizeSigningMethod(method);
+      const selectedInput = els.signingMethodInputs.find((input) => input.value === state.signingMethod);
+      if (selectedInput?.disabled) {
         state.signingMethod = SIGNING_METHOD.IIT_TOKEN;
       }
       els.signingMethodInputs.forEach((input) => {
@@ -10574,10 +10621,10 @@ ${els.log.textContent}`.trim();
       });
       els.tokenPanel.classList.toggle("hidden", state.signingMethod !== SIGNING_METHOD.IIT_TOKEN);
       els.jksPanel.classList.toggle("hidden", state.signingMethod !== SIGNING_METHOD.PRIVATBANK_JKS);
-      els.smartIdPanel.classList.toggle("hidden", state.signingMethod !== SIGNING_METHOD.PRIVATBANK_SMARTID);
+      els.smartIdPanel.classList.toggle("hidden", state.signingMethod !== SIGNING_METHOD.SMARTID);
       els.tokenKeyPanel.classList.toggle("hidden", state.signingMethod !== SIGNING_METHOD.IIT_TOKEN);
       els.jksKeyPanel.classList.toggle("hidden", state.signingMethod !== SIGNING_METHOD.PRIVATBANK_JKS);
-      els.smartIdKeyPanel.classList.toggle("hidden", state.signingMethod !== SIGNING_METHOD.PRIVATBANK_SMARTID);
+      els.smartIdKeyPanel.classList.toggle("hidden", state.signingMethod !== SIGNING_METHOD.SMARTID);
       els.pinInput.value = "";
       els.jksPasswordInput.value = "";
       await clearLoadedKey(defaultKeyStatusHtml());
@@ -10587,7 +10634,7 @@ ${els.log.textContent}`.trim();
           setJksStatus('<div class="status-line"><span class="dot warn"></span><span>Оберіть PrivatBank .jks контейнер, щоб отримати список ключів усередині.</span></div>');
         }
       }
-      if (state.signingMethod === SIGNING_METHOD.PRIVATBANK_SMARTID) {
+      if (state.signingMethod === SIGNING_METHOD.SMARTID) {
         await ensureSmartIdProviderLoaded();
         refreshSmartIdUi();
       }
@@ -10635,6 +10682,9 @@ ${els.log.textContent}`.trim();
       }
       state.uploadedFile = file;
       state.document = payload;
+      if (payload.bootstrap) {
+        applyBootstrap(payload.bootstrap);
+      }
       resetSignatureState("Після зчитування ключа можна запускати підпис.");
       setDocumentStatus(`
     <div class="status-line"><span class="dot ok"></span><strong>Документ завантажено</strong></div>
@@ -10776,7 +10826,7 @@ ${els.log.textContent}`.trim();
       setKeyStatus('<div class="status-line"><span class="dot warn"></span><span>Очікується підтвердження SmartID у Privat24…</span></div>');
       state.readedKey = await signer.readPrivateKeyKSP(createSmartIdKspSettings(provider), null, true);
       state.readedKeyMeta = {
-        method: SIGNING_METHOD.PRIVATBANK_SMARTID,
+        method: SIGNING_METHOD.SMARTID,
         label: provider.name || "PrivatBank SmartID",
         providerId: provider.id,
         clientIdPrefix: provider.clientIdPrefix || null
@@ -10799,7 +10849,7 @@ ${els.log.textContent}`.trim();
     async function readKey() {
       if (state.signingMethod === SIGNING_METHOD.PRIVATBANK_JKS) {
         await readJksKey();
-      } else if (state.signingMethod === SIGNING_METHOD.PRIVATBANK_SMARTID) {
+      } else if (state.signingMethod === SIGNING_METHOD.SMARTID) {
         await readSmartIdKey();
       } else {
         await readHardwareKey();
@@ -10818,13 +10868,13 @@ ${els.log.textContent}`.trim();
       if (!state.readedKey) {
         throw new Error("Спочатку зчитайте ключ обраним методом.");
       }
-      const signer = state.signingMethod === SIGNING_METHOD.PRIVATBANK_SMARTID ? (await ensureSmartIdReady()).signer : await getSigner();
+      const signer = state.signingMethod === SIGNING_METHOD.SMARTID ? (await ensureSmartIdReady()).signer : await getSigner();
       const signType = new EndUserSignContainerInfo2();
       signType.type = EndUserConstants4.EndUserSignContainerType.CAdES;
       signType.subType = EndUserConstants4.EndUserCAdESType.Detached;
       signType.signLevel = EndUserConstants4.EndUserSignType.CAdES_X_Long;
       const data = base64ToUint8Array(state.document.signingPayloadBase64);
-      if (state.signingMethod === SIGNING_METHOD.PRIVATBANK_SMARTID) {
+      if (state.signingMethod === SIGNING_METHOD.SMARTID) {
         state.smartIdPendingAction = "sign";
         state.smartIdConfirmEvent = null;
         refreshSmartIdUi();
@@ -10994,10 +11044,20 @@ ${els.log.textContent}`.trim();
     populateKeyMedias();
     populateJksPrivateKeys();
     updateSessionInfo();
-    void ensureSmartIdProviderLoaded().catch((error) => {
-      log(`УВАГА: SmartID provider init failed: ${error?.message || String(error)}`);
-    });
-    void setSigningMethod(state.signingMethod, { persist: false }).catch((error) => {
+    async function initialize() {
+      try {
+        await loadBootstrap();
+      } catch (error) {
+        log(`УВАГА: bootstrap init failed: ${error?.message || String(error)}`);
+      }
+      if (!state.smartIdProvider) {
+        await ensureSmartIdProviderLoaded().catch((error) => {
+          log(`УВАГА: SmartID provider init failed: ${error?.message || String(error)}`);
+        });
+      }
+      await setSigningMethod(normalizeSigningMethod(state.bootstrap?.defaults?.signingMethod || state.signingMethod), { persist: false });
+    }
+    void initialize().catch((error) => {
       showError(setKeyStatus, error);
       log(`ПОМИЛКА: ${error?.message || String(error)}`);
     });

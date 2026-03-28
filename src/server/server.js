@@ -11,9 +11,38 @@ const app = express();
 const port = Number(process.env.PORT || 3017);
 const host = process.env.HOST || '0.0.0.0';
 const appRoot = process.cwd();
+const packageJson = require(path.join(appRoot, 'package.json'));
+const serviceVersion = packageJson.version || '0.0.0';
 const storageRoot = path.resolve(process.env.SIGN_STORAGE_DIR || path.join(appRoot, 'storage'));
 const upload = multer({ storage: multer.memoryStorage(), limits: { fileSize: 50 * 1024 * 1024 } });
-const ALLOWED_SIGNING_METHODS = new Set(['iit-token', 'privatbank-jks', 'privatbank-smartid']);
+const SIGNING_METHODS = Object.freeze([
+  {
+    id: 'iit-token',
+    family: 'hardware-token',
+    label: 'IIT token',
+    productionReady: true,
+    experimental: false
+  },
+  {
+    id: 'privatbank-jks',
+    family: 'file-key',
+    label: 'PrivatBank JKS',
+    productionReady: true,
+    experimental: false
+  },
+  {
+    id: 'smartid',
+    family: 'cloud-signing',
+    label: 'SmartID',
+    providerId: 'pb-smartid',
+    productionReady: false,
+    experimental: true
+  }
+]);
+const ALLOWED_SIGNING_METHODS = new Set(SIGNING_METHODS.map((method) => method.id));
+const SIGNING_METHOD_ALIASES = new Map([
+  ['privatbank-smartid', 'smartid']
+]);
 const SENSITIVE_FIELD_PATTERN = /(password|pass|pin|secret|privatekey|private_key|signaturebase64|filebase64|raw|binary|content|buffer|data)$/i;
 const EXTRA_PROXY_ALLOWED_HOSTS = new Set(['zc.bank.gov.ua']);
 
@@ -21,6 +50,31 @@ app.disable('x-powered-by');
 app.use(express.json({ limit: '10mb' }));
 app.get('/vendor/euscp.worker.js', (_req, res) => {
   res.sendFile(path.join(appRoot, 'node_modules', '@it-enterprise', 'digital-signature', 'src', 'euscp.worker.js'));
+});
+
+function buildBootstrapPayload() {
+  const smartIdProvider = buildSmartIdProviderConfig();
+  return {
+    service: 'sign-service',
+    version: serviceVersion,
+    defaults: {
+      signingMethod: 'iit-token'
+    },
+    signingMethods: SIGNING_METHODS.map((method) => ({
+      ...method,
+      enabled: method.id === 'smartid' ? Boolean(smartIdProvider.enabled) : true
+    })),
+    providers: {
+      smartId: smartIdProvider
+    }
+  };
+}
+
+app.get('/api/bootstrap', (req, res) => {
+  res.json({
+    ok: true,
+    bootstrap: buildBootstrapPayload()
+  });
 });
 
 app.get('/api/providers/privatbank-smartid', async (req, res, next) => {
@@ -31,6 +85,7 @@ app.get('/api/providers/privatbank-smartid', async (req, res, next) => {
 
     res.json({
       ok: true,
+      methodId: 'smartid',
       provider: config,
       probe: includeProbe ? await probeSmartIdProvider(config) : null
     });
@@ -108,7 +163,7 @@ app.all('/pki/ProxyHandler', express.text({ type: '*/*', limit: '10mb' }), async
     const requestContentType = String(req.query.contentType || '').trim() || 'application/octet-stream';
     const requestHeaders = {
       Accept: '*/*',
-      'User-Agent': 'VilnoCheck-SignService/0.2 ProxyHandler'
+      'User-Agent': `VilnoCheck-SignService/${serviceVersion} ProxyHandler`
     };
 
     let requestBody;
@@ -199,7 +254,9 @@ function sanitizeSessionValue(value, depth = 0) {
 
 function normalizeSigningMethod(method) {
   const value = String(method || '').trim();
-  return ALLOWED_SIGNING_METHODS.has(value) ? value : null;
+  if (!value) return null;
+  const normalized = SIGNING_METHOD_ALIASES.get(value) || value;
+  return ALLOWED_SIGNING_METHODS.has(normalized) ? normalized : null;
 }
 
 function normalizeStatus(value) {
@@ -268,7 +325,12 @@ async function saveRecord(documentId, record) {
 }
 
 app.get('/api/health', (_req, res) => {
-  res.json({ ok: true, service: 'sign-service', version: '0.1.0' });
+  res.json({
+    ok: true,
+    service: 'sign-service',
+    version: serviceVersion,
+    signingMethods: SIGNING_METHODS.map((method) => method.id)
+  });
 });
 
 app.post('/api/documents', upload.single('document'), async (req, res, next) => {
@@ -299,6 +361,7 @@ app.post('/api/documents', upload.single('document'), async (req, res, next) => 
       },
       session: {
         signingMethod: null,
+        availableSigningMethods: SIGNING_METHODS,
         status: 'document-uploaded',
         methodState: null,
         signer: null,
@@ -317,7 +380,9 @@ app.post('/api/documents', upload.single('document'), async (req, res, next) => 
       mimeType: record.document.mimeType,
       size: buffer.length,
       sha256: record.document.sha256,
-      signingPayloadBase64: buffer.toString('base64')
+      signingPayloadBase64: buffer.toString('base64'),
+      session: record.session,
+      bootstrap: buildBootstrapPayload()
     });
   } catch (error) {
     next(error);
@@ -432,6 +497,7 @@ app.get('/api/documents/:documentId/package', async (req, res, next) => {
     archive.append(JSON.stringify({
       generatedAt: new Date().toISOString(),
       service: 'sign-service',
+      version: serviceVersion,
       documentId: record.id,
       document: {
         fileName: record.document.originalName,

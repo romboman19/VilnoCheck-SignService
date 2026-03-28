@@ -161,6 +161,15 @@ input:disabled {
   background: rgba(105, 168, 255, 0.12);
   box-shadow: inset 0 0 0 1px rgba(105, 168, 255, 0.18);
 }
+.method-card.disabled {
+  opacity: 0.55;
+  cursor: not-allowed;
+  transform: none;
+}
+.method-card.disabled:hover {
+  transform: none;
+  border-color: var(--border);
+}
 .method-card input {
   position: absolute;
   opacity: 0;
