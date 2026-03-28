@@ -10296,6 +10296,9 @@ ${els.log.textContent}`.trim();
       els.jksKeySelect.innerHTML = options.join("");
       els.jksKeySelect.disabled = !state.jksPrivateKeys.length;
     }
+    function getPkiProxyUrl() {
+      return new URL("/pki/ProxyHandler", window.location.href).toString();
+    }
     function createSigner() {
       return new DigitalSignature({
         language: "uk",
@@ -10304,9 +10307,9 @@ ${els.log.textContent}`.trim();
           return {
             AllowTestKeys: false,
             PreferHarware: true,
-            DirectAccess: true,
-            ApplyProxySettings: false,
-            UseProxy: false,
+            DirectAccess: false,
+            ApplyProxySettings: true,
+            UseProxy: true,
             WebClientFileSize: 50,
             KSPs: []
           };
@@ -10315,7 +10318,7 @@ ${els.log.textContent}`.trim();
           return new DigitalSignatureSettings2(
             "uk",
             "openprro-sign-service",
-            "",
+            getPkiProxyUrl(),
             new DefaultCertificatesProvider2("/data/CAs.json", "/data/CACertificates.p7b"),
             "/vendor/euscp.worker.js"
           );

@@ -4,11 +4,13 @@ const archiver = require('archiver');
 const crypto = require('crypto');
 const fsp = require('fs/promises');
 const path = require('path');
+const { URL } = require('url');
 
 const app = express();
 const port = Number(process.env.PORT || 3017);
 const host = process.env.HOST || '0.0.0.0';
-const storageRoot = path.resolve(process.env.SIGN_STORAGE_DIR || path.join(__dirname, 'storage'));
+const appRoot = process.cwd();
+const storageRoot = path.resolve(process.env.SIGN_STORAGE_DIR || path.join(appRoot, 'storage'));
 const upload = multer({ storage: multer.memoryStorage(), limits: { fileSize: 50 * 1024 * 1024 } });
 const ALLOWED_SIGNING_METHODS = new Set(['iit-token', 'privatbank-jks']);
 const SENSITIVE_FIELD_PATTERN = /(password|pass|pin|secret|privatekey|private_key|signaturebase64|filebase64|raw|binary|content|buffer|data)$/i;
@@ -16,9 +18,110 @@ const SENSITIVE_FIELD_PATTERN = /(password|pass|pin|secret|privatekey|private_ke
 app.disable('x-powered-by');
 app.use(express.json({ limit: '10mb' }));
 app.get('/vendor/euscp.worker.js', (_req, res) => {
-  res.sendFile(path.join(__dirname, 'node_modules', '@it-enterprise', 'digital-signature', 'src', 'euscp.worker.js'));
+  res.sendFile(path.join(appRoot, 'node_modules', '@it-enterprise', 'digital-signature', 'src', 'euscp.worker.js'));
 });
-app.use(express.static(path.join(__dirname, 'public')));
+
+let proxyAllowedHostsPromise = null;
+
+function normalizeProxyTarget(rawAddress) {
+  const trimmed = String(rawAddress || '').trim();
+  if (!trimmed) {
+    throw new Error('PKI proxy target is missing.');
+  }
+
+  const withProtocol = /^[a-z][a-z0-9+.-]*:\/\//i.test(trimmed) ? trimmed : `http://${trimmed}`;
+  const url = new URL(withProtocol);
+
+  if (!['http:', 'https:'].includes(url.protocol)) {
+    throw new Error(`Unsupported PKI proxy protocol: ${url.protocol}`);
+  }
+
+  return url;
+}
+
+function addHostToAllowList(target, hosts) {
+  if (!target) return;
+  try {
+    const url = normalizeProxyTarget(target);
+    if (url.hostname) {
+      hosts.add(url.hostname.toLowerCase());
+    }
+  } catch {
+    // ignore malformed CA endpoints
+  }
+}
+
+async function getProxyAllowedHosts() {
+  if (!proxyAllowedHostsPromise) {
+    proxyAllowedHostsPromise = (async () => {
+      const caFile = path.join(appRoot, 'public', 'data', 'CAs.json');
+      const raw = await fsp.readFile(caFile, 'utf8');
+      const data = JSON.parse(raw);
+      const hosts = new Set();
+
+      for (const ca of Array.isArray(data) ? data : []) {
+        addHostToAllowList(ca?.address, hosts);
+        addHostToAllowList(ca?.ocspAccessPointAddress, hosts);
+        addHostToAllowList(ca?.cmpAddress, hosts);
+        addHostToAllowList(ca?.tspAddress, hosts);
+        addHostToAllowList(ca?.ldapAddress, hosts);
+      }
+
+      return hosts;
+    })().catch((error) => {
+      proxyAllowedHostsPromise = null;
+      throw error;
+    });
+  }
+
+  return proxyAllowedHostsPromise;
+}
+
+app.all('/pki/ProxyHandler', express.text({ type: '*/*', limit: '10mb' }), async (req, res) => {
+  try {
+    const upstreamUrl = normalizeProxyTarget(req.query.address);
+    const allowedHosts = await getProxyAllowedHosts();
+
+    if (!allowedHosts.has(upstreamUrl.hostname.toLowerCase())) {
+      return res.status(403).type('text/plain; charset=utf-8').send('PKI proxy host is not allowed.');
+    }
+
+    const requestContentType = String(req.query.contentType || '').trim() || 'application/octet-stream';
+    const requestHeaders = {
+      Accept: '*/*',
+      'User-Agent': 'VilnoCheck-SignService/0.2 ProxyHandler'
+    };
+
+    let requestBody;
+    if (!['GET', 'HEAD'].includes(req.method)) {
+      const incomingBody = typeof req.body === 'string' ? req.body.trim() : '';
+      requestBody = incomingBody ? Buffer.from(incomingBody, 'base64') : Buffer.alloc(0);
+      requestHeaders['Content-Type'] = requestContentType;
+      requestHeaders['Content-Length'] = String(requestBody.length);
+    }
+
+    const upstreamResponse = await fetch(upstreamUrl, {
+      method: req.method,
+      headers: requestHeaders,
+      body: requestBody,
+      redirect: 'follow'
+    });
+
+    const responseBuffer = Buffer.from(await upstreamResponse.arrayBuffer());
+    if (!upstreamResponse.ok) {
+      console.warn(`[pki-proxy] ${req.method} ${upstreamUrl} -> ${upstreamResponse.status}`);
+      return res.status(502).type('text/plain; charset=utf-8').send(`PKI upstream error: ${upstreamResponse.status}`);
+    }
+
+    res.set('Cache-Control', 'no-store');
+    res.type('text/plain; charset=utf-8').send(responseBuffer.toString('base64'));
+  } catch (error) {
+    console.error('[pki-proxy] request failed', error);
+    res.status(502).type('text/plain; charset=utf-8').send('PKI proxy request failed.');
+  }
+});
+
+app.use(express.static(path.join(appRoot, 'public')));
 
 function decodeUploadFileName(fileName) {
   const value = String(fileName || '');
@@ -344,7 +447,7 @@ app.get('*', (req, res) => {
   if (req.path.startsWith('/api/')) {
     return res.status(404).json({ error: 'not found' });
   }
-  res.sendFile(path.join(__dirname, 'public', 'index.html'));
+  res.sendFile(path.join(appRoot, 'public', 'index.html'));
 });
 
 app.use((error, _req, res, _next) => {
