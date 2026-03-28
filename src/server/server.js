@@ -5,6 +5,7 @@ const crypto = require('crypto');
 const fsp = require('fs/promises');
 const path = require('path');
 const { URL } = require('url');
+const { buildSmartIdProviderConfig, probeSmartIdProvider } = require('./providers/privatbank-smartid');
 
 const app = express();
 const port = Number(process.env.PORT || 3017);
@@ -12,7 +13,7 @@ const host = process.env.HOST || '0.0.0.0';
 const appRoot = process.cwd();
 const storageRoot = path.resolve(process.env.SIGN_STORAGE_DIR || path.join(appRoot, 'storage'));
 const upload = multer({ storage: multer.memoryStorage(), limits: { fileSize: 50 * 1024 * 1024 } });
-const ALLOWED_SIGNING_METHODS = new Set(['iit-token', 'privatbank-jks']);
+const ALLOWED_SIGNING_METHODS = new Set(['iit-token', 'privatbank-jks', 'privatbank-smartid']);
 const SENSITIVE_FIELD_PATTERN = /(password|pass|pin|secret|privatekey|private_key|signaturebase64|filebase64|raw|binary|content|buffer|data)$/i;
 const EXTRA_PROXY_ALLOWED_HOSTS = new Set(['zc.bank.gov.ua']);
 
@@ -20,6 +21,22 @@ app.disable('x-powered-by');
 app.use(express.json({ limit: '10mb' }));
 app.get('/vendor/euscp.worker.js', (_req, res) => {
   res.sendFile(path.join(appRoot, 'node_modules', '@it-enterprise', 'digital-signature', 'src', 'euscp.worker.js'));
+});
+
+app.get('/api/providers/privatbank-smartid', async (req, res, next) => {
+  try {
+    const config = buildSmartIdProviderConfig();
+    const probe = String(req.query.probe || '').trim();
+    const includeProbe = ['1', 'true', 'yes'].includes(probe.toLowerCase());
+
+    res.json({
+      ok: true,
+      provider: config,
+      probe: includeProbe ? await probeSmartIdProvider(config) : null
+    });
+  } catch (error) {
+    next(error);
+  }
 });
 
 let proxyAllowedHostsPromise = null;

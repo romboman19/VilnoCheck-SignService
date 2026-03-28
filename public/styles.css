@@ -101,6 +101,7 @@ input:disabled {
 }
 .note ul { margin: 8px 0 0 18px; color: var(--muted); }
 .status-box a, .result-box a { color: var(--accent-2); }
+.status-box img { max-width: 180px; width: 100%; height: auto; border-radius: 12px; border: 1px solid var(--border); background: white; }
 .status-line {
   display: flex;
   align-items: center;
@@ -135,7 +136,7 @@ input:disabled {
 .kv div span:first-child { color: var(--muted); }
 .method-grid {
   display: grid;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
+  grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
   gap: 12px;
 }
 .method-card {
