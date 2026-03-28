@@ -1,6 +1,20 @@
-import { mkdir, copyFile } from 'node:fs/promises';
-import path from 'node:path';
+import { mkdir } from "node:fs/promises";
+import path from "node:path";
+import { build } from "esbuild";
 
 const root = process.cwd();
-await mkdir(path.join(root, 'public', 'assets'), { recursive: true });
-await copyFile(path.join(root, 'src', 'client', 'main.js'), path.join(root, 'public', 'assets', 'app.js'));
+const outdir = path.join(root, "public", "assets");
+
+await mkdir(outdir, { recursive: true });
+
+await build({
+  entryPoints: [path.join(root, "src", "client", "main.js")],
+  outfile: path.join(outdir, "app.js"),
+  bundle: true,
+  format: "esm",
+  platform: "browser",
+  target: ["es2020"],
+  charset: "utf8",
+  legalComments: "none",
+  logLevel: "info"
+});
