@@ -290,9 +290,24 @@ npm run build
 ## Відомі обмеження / caveats
 
 ### SmartID
-- поточна реалізація вже жива, але ще не підтверджена end-to-end на реальному акаунті Privat24
-- `SMARTID_CLIENT_ID_PREFIX` може потребувати окремого підтвердження для production
-- reverse proxy має правильно віддавати `/api/bootstrap`
+- ✅ Серверний API готовий (`/init`, `/status/:sessionId`)
+- ⚠️ Необхідно отримати `SMARTID_CLIENT_ID_PREFIX` від ПриватБанку
+- ⚠️ Необхідний реальний SmartID-enabled акаунт Privat24 для тестування
+- Реалізовано два шляхи підпису:
+  1. Браузерний (через IIT SDK) — основний
+  2. Серверний polling fallback — резервний
+
+### Що потрібно від ПриватБанку для активації SmartID
+
+1. Написати на `acsk@privatbank.ua` або через форму `https://acsk.privatbank.ua`
+2. Запросити `clientIdPrefix` для вашої організації
+3. Після отримання додати в `.env`:
+   ```env
+   SMARTID_ENABLED=1
+   SMARTID_CLIENT_ID_PREFIX=your_prefix_here
+   ```
+4. Розкоментувати реалізацію в `src/server/providers/privatbank-smartid.js`
+5. Перезапустити сервер
 
 ### File-key flow
 - browser-side PKI залежить від мережі, CA endpoints і проксі-маршруту
