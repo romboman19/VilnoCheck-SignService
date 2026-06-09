@@ -7,7 +7,7 @@ const path = require('path');
 const { URL } = require('url');
 const morgan = require('morgan');
 const fs = require('fs');
-const { buildSmartIdProviderConfig, probeSmartIdProvider } = require('./providers/privatbank-smartid');
+const { buildSmartIdProviderConfig, probeSmartIdProvider, probe, initSession, getStatus, ENABLED } = require('./providers/privatbank-smartid');
 const { setupSecurity, generalLimiter, documentLimiter, pkiLimiter, requireApiKey } = require('./middleware/security');
 const { cleanupExpiredDocuments } = require('./cleanup');
 const { verifyDetachedSignature } = require('./verify');
@@ -359,15 +359,40 @@ app.get('/api/health', (_req, res) => {
   });
 });
 
-// SmartID polling endpoint (for client-side status checks)
+// SmartID endpoints
 app.get('/api/providers/privatbank-smartid/status/:sessionId', async (req, res) => {
-  // This endpoint is called by client to poll SmartID signing status
-  // The actual signing happens client-side via @it-enterprise/digital-signature
-  // Server just tracks the session state
-  res.json({
-    status: 'pending', // 'pending' | 'confirmed' | 'rejected' | 'expired'
-    message: 'SmartID status polling should be implemented client-side'
-  });
+  try {
+    const result = await getStatus(req.params.sessionId);
+    res.json(result);
+  } catch (err) {
+    res.status(500).json({ status: 'error', error: err.message });
+  }
+});
+
+// POST /api/providers/privatbank-smartid/init — ініціювати SmartID сесію
+app.post('/api/providers/privatbank-smartid/init', requireApiKey, async (req, res) => {
+  try {
+    const { documentId } = req.body;
+    if (!documentId) {
+      return res.status(400).json({ error: 'documentId required' });
+    }
+
+    // Зчитати документ зі storage
+    const record = await loadRecord(documentId);
+    const documentBytes = await fsp.readFile(record.document.path);
+
+    const result = await initSession(documentBytes, record.document.originalName);
+    res.json(result);
+  } catch (err) {
+    // 503 = Service Unavailable (не налаштовано)
+    if (err.message.includes('not configured') || err.message.includes('not yet activated')) {
+      return res.status(503).json({ 
+        error: err.message,
+        hint: 'Contact PrivatBank at acsk@privatbank.ua to obtain SMARTID_CLIENT_ID_PREFIX'
+      });
+    }
+    res.status(500).json({ error: err.message });
+  }
 });
 
 app.post('/api/documents', requireApiKey, documentLimiter, upload.single('document'), async (req, res, next) => {

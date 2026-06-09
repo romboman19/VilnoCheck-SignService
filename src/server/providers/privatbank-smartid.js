@@ -1,3 +1,7 @@
+'use strict';
+
+require('dotenv').config();
+
 const SMARTID_DEFAULTS = Object.freeze({
   id: 'pb-smartid',
   name: 'Приватбанк - хмарний підпис "SmartID"',
@@ -9,6 +13,152 @@ const SMARTID_DEFAULTS = Object.freeze({
   directAccess: true,
   codeEDRPOU: '14360570'
 });
+
+const CLIENT_ID_PREFIX = process.env.SMARTID_CLIENT_ID_PREFIX || SMARTID_DEFAULTS.clientIdPrefix;
+const ENABLED = process.env.SMARTID_ENABLED === '1';
+const SMARTID_ADDRESS = process.env.SMARTID_ADDRESS || SMARTID_DEFAULTS.address;
+
+// Кеш EndUser інстансу
+let _eu = null;
+let _euInitError = null;
+
+async function getEU() {
+  if (_eu) return _eu;
+  if (_euInitError) return null;
+
+  try {
+    const { EndUser } = require('@it-enterprise/digital-signature');
+    const path = require('path');
+    const fs = require('fs');
+
+    const caJSON = JSON.parse(fs.readFileSync(path.join(__dirname, '../../../public/data/CAs.json'), 'utf8'));
+    const caCerts = fs.readFileSync(path.join(__dirname, '../../../public/data/CACertificates.p7b'));
+
+    const eu = new EndUser();
+    await eu.Initialize({
+      language: 'uk',
+      encoding: 'utf-8',
+      CAs: caJSON,
+      CACertificates: caCerts,
+      allowedSignTypes: ['attached', 'detached'],
+    });
+
+    _eu = eu;
+    return eu;
+  } catch (err) {
+    console.warn('[SmartID] EndUser init failed:', err.message);
+    _euInitError = err;
+    return null;
+  }
+}
+
+// sessionStore — тимчасове зберігання (в production → Redis)
+const sessionStore = new Map();
+const SESSION_TTL_MS = 10 * 60 * 1000; // 10 хвилин
+
+function cleanupExpiredSessions() {
+  const now = Date.now();
+  for (const [id, session] of sessionStore) {
+    if (now - session.createdAt > SESSION_TTL_MS) {
+      sessionStore.delete(id);
+      console.log(`[SmartID] Expired session removed: ${id}`);
+    }
+  }
+}
+
+// Запускаємо cleanup кожні 2 хвилини
+setInterval(cleanupExpiredSessions, 2 * 60 * 1000);
+
+async function probe() {
+  if (!ENABLED) {
+    return { 
+      available: false, 
+      enabled: false,
+      reason: 'SMARTID_ENABLED is not set to 1'
+    };
+  }
+  
+  if (!CLIENT_ID_PREFIX || CLIENT_ID_PREFIX === SMARTID_DEFAULTS.clientIdPrefix) {
+    return { 
+      available: false, 
+      enabled: true,
+      reason: 'SMARTID_CLIENT_ID_PREFIX not configured (use your PrivatBank client prefix)'
+    };
+  }
+
+  const eu = await getEU();
+  if (!eu) {
+    return {
+      available: false,
+      enabled: true,
+      reason: 'EndUser initialization failed (check @it-enterprise/digital-signature installation)'
+    };
+  }
+
+  // Спробуємо отримати список сертифікатів
+  try {
+    // Назва методу може відрізнятись — адаптувати після тесту
+    // const certs = await eu.SmartIDGetCertificates(CLIENT_ID_PREFIX);
+    // return { available: true, certificatesCount: certs.length };
+    
+    // Заглушка поки немає реального CLIENT_ID_PREFIX
+    return {
+      available: false,
+      enabled: true,
+      reason: 'CLIENT_ID_PREFIX configured but SmartIDGetCertificates not yet implemented (needs real prefix)',
+      hint: 'To activate: set SMARTID_CLIENT_ID_PREFIX in .env and restart server'
+    };
+  } catch (err) {
+    return {
+      available: false,
+      enabled: true,
+      reason: `SmartID API probe failed: ${err.message}`,
+      hint: 'Verify SMARTID_CLIENT_ID_PREFIX with PrivatBank'
+    };
+  }
+}
+
+async function initSession(documentBytes, fileName) {
+  if (!ENABLED) {
+    throw new Error('SmartID is disabled. Set SMARTID_ENABLED=1 in .env');
+  }
+
+  if (!CLIENT_ID_PREFIX || CLIENT_ID_PREFIX === SMARTID_DEFAULTS.clientIdPrefix) {
+    throw new Error(
+      'SmartID not configured: SMARTID_CLIENT_ID_PREFIX must be set to your PrivatBank client prefix. ' +
+      'Contact PrivatBank at acsk@privatbank.ua to obtain your clientIdPrefix.'
+    );
+  }
+
+  const eu = await getEU();
+  if (!eu) {
+    throw new Error('EndUser initialization failed. Check server logs.');
+  }
+
+  // TODO: Implement real SmartID flow after obtaining CLIENT_ID_PREFIX
+  // 1. const certs = await eu.SmartIDGetCertificates(CLIENT_ID_PREFIX);
+  // 2. const cert = certs[0];
+  // 3. const { operationId, confirmationUrl } = await eu.SmartIDSign(documentBytes, cert, CLIENT_ID_PREFIX);
+  // 4. Store session and return QR/DeepLink
+
+  // Заглушка — повертаємо помилку з інструкцією
+  throw new Error(
+    'SmartID is configured but not yet activated. ' +
+    'To complete setup: obtain CLIENT_ID_PREFIX from PrivatBank, then uncomment real implementation in privatbank-smartid.js'
+  );
+}
+
+async function getStatus(sessionId) {
+  const session = sessionStore.get(sessionId);
+  if (!session) {
+    return { status: 'expired', reason: 'Session not found or expired' };
+  }
+
+  // TODO: Implement real status check
+  // const result = await eu.SmartIDGetSignStatus(sessionId, CLIENT_ID_PREFIX);
+  
+  return { status: session.status }; // pending | confirmed | rejected
+}
 
 function parseBoolean(value, fallback) {
   if (value == null || value === '') return fallback;
@@ -94,5 +244,9 @@ async function probeSmartIdProvider(config = buildSmartIdProviderConfig()) {
 module.exports = {
   SMARTID_DEFAULTS,
   buildSmartIdProviderConfig,
-  probeSmartIdProvider
+  probeSmartIdProvider,
+  probe,
+  initSession,
+  getStatus,
+  ENABLED
 };
