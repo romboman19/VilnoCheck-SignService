@@ -6,6 +6,8 @@ const fsp = require('fs/promises');
 const path = require('path');
 const { URL } = require('url');
 const { buildSmartIdProviderConfig, probeSmartIdProvider } = require('./providers/privatbank-smartid');
+const { setupSecurity, generalLimiter, documentLimiter, pkiLimiter, requireApiKey } = require('./middleware/security');
+const { cleanupExpiredDocuments } = require('./cleanup');
 
 const app = express();
 const port = Number(process.env.PORT || 3017);
@@ -47,6 +49,11 @@ const SENSITIVE_FIELD_PATTERN = /(password|pass|pin|secret|privatekey|private_ke
 const EXTRA_PROXY_ALLOWED_HOSTS = new Set(['zc.bank.gov.ua']);
 
 app.disable('x-powered-by');
+
+// Security middleware
+setupSecurity(app);
+app.use(generalLimiter);
+
 app.use(express.json({ limit: '10mb' }));
 app.get('/vendor/euscp.worker.js', (_req, res) => {
   res.sendFile(path.join(appRoot, 'node_modules', '@it-enterprise', 'digital-signature', 'src', 'euscp.worker.js'));
@@ -151,7 +158,7 @@ async function getProxyAllowedHosts() {
   return proxyAllowedHostsPromise;
 }
 
-app.all('/pki/ProxyHandler', express.text({ type: '*/*', limit: '10mb' }), async (req, res) => {
+app.all('/pki/ProxyHandler', pkiLimiter, express.text({ type: '*/*', limit: '10mb' }), async (req, res) => {
   try {
     const upstreamUrl = normalizeProxyTarget(req.query.address);
     const allowedHosts = await getProxyAllowedHosts();
@@ -333,7 +340,7 @@ app.get('/api/health', (_req, res) => {
   });
 });
 
-app.post('/api/documents', upload.single('document'), async (req, res, next) => {
+app.post('/api/documents', requireApiKey, documentLimiter, upload.single('document'), async (req, res, next) => {
   try {
     if (!req.file || !req.file.buffer?.length) {
       return res.status(400).json({ error: 'document file is required' });
@@ -389,7 +396,7 @@ app.post('/api/documents', upload.single('document'), async (req, res, next) => 
   }
 });
 
-app.patch('/api/documents/:documentId/session', async (req, res, next) => {
+app.patch('/api/documents/:documentId/session', requireApiKey, async (req, res, next) => {
   try {
     const { documentId } = req.params;
     const record = await loadRecord(documentId);
@@ -409,7 +416,7 @@ app.patch('/api/documents/:documentId/session', async (req, res, next) => {
   }
 });
 
-app.post('/api/documents/:documentId/signature', async (req, res, next) => {
+app.post('/api/documents/:documentId/signature', requireApiKey, async (req, res, next) => {
   try {
     const { documentId } = req.params;
     const {
@@ -472,7 +479,7 @@ app.post('/api/documents/:documentId/signature', async (req, res, next) => {
   }
 });
 
-app.get('/api/documents/:documentId/package', async (req, res, next) => {
+app.get('/api/documents/:documentId/package', requireApiKey, async (req, res, next) => {
   try {
     const { documentId } = req.params;
     const record = await loadRecord(documentId);
@@ -542,9 +549,13 @@ app.use((error, _req, res, _next) => {
 
 ensureDir(storageRoot)
   .then(() => {
+    // Initialize cleanup
+    require('./cleanup');
+    
     app.listen(port, host, () => {
       console.log(`[sign-service] listening on http://${host}:${port}`);
       console.log(`[sign-service] storage: ${storageRoot}`);
+      console.log(`[sign-service] cleanup TTL: 24h`);
     });
   })
   .catch((error) => {
