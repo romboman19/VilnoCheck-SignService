@@ -340,6 +340,17 @@ app.get('/api/health', (_req, res) => {
   });
 });
 
+// SmartID polling endpoint (for client-side status checks)
+app.get('/api/providers/privatbank-smartid/status/:sessionId', async (req, res) => {
+  // This endpoint is called by client to poll SmartID signing status
+  // The actual signing happens client-side via @it-enterprise/digital-signature
+  // Server just tracks the session state
+  res.json({
+    status: 'pending', // 'pending' | 'confirmed' | 'rejected' | 'expired'
+    message: 'SmartID status polling should be implemented client-side'
+  });
+});
+
 app.post('/api/documents', requireApiKey, documentLimiter, upload.single('document'), async (req, res, next) => {
   try {
     if (!req.file || !req.file.buffer?.length) {
