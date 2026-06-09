@@ -5,9 +5,12 @@ const crypto = require('crypto');
 const fsp = require('fs/promises');
 const path = require('path');
 const { URL } = require('url');
+const morgan = require('morgan');
+const fs = require('fs');
 const { buildSmartIdProviderConfig, probeSmartIdProvider } = require('./providers/privatbank-smartid');
 const { setupSecurity, generalLimiter, documentLimiter, pkiLimiter, requireApiKey } = require('./middleware/security');
 const { cleanupExpiredDocuments } = require('./cleanup');
+const { verifyDetachedSignature } = require('./verify');
 
 const app = express();
 const port = Number(process.env.PORT || 3017);
@@ -53,6 +56,22 @@ app.disable('x-powered-by');
 // Security middleware
 setupSecurity(app);
 app.use(generalLimiter);
+
+// Morgan logging
+const logsDir = path.join(appRoot, 'logs');
+if (!fs.existsSync(logsDir)) fs.mkdirSync(logsDir, { recursive: true });
+
+// Console logging (dev format) for non-production
+if (process.env.NODE_ENV !== 'production') {
+  app.use(morgan('dev'));
+}
+
+// File logging (combined format)
+const accessLogStream = fs.createWriteStream(
+  path.join(logsDir, 'access.log'),
+  { flags: 'a' }
+);
+app.use(morgan('combined', { stream: accessLogStream }));
 
 app.use(express.json({ limit: '10mb' }));
 app.get('/vendor/euscp.worker.js', (_req, res) => {
@@ -448,6 +467,18 @@ app.post('/api/documents/:documentId/signature', requireApiKey, async (req, res,
     const record = await loadRecord(documentId);
     const normalizedSigningMethod = normalizeSigningMethod(signingMethod || session?.signingMethod);
     const signatureBuffer = Buffer.from(signatureBase64, 'base64');
+
+    // Verify detached signature before saving
+    const documentBytes = await fsp.readFile(record.document.path);
+    const verifyResult = await verifyDetachedSignature(documentBytes, signatureBuffer);
+
+    if (!verifyResult.valid) {
+      return res.status(400).json({
+        error: 'Invalid signature',
+        details: verifyResult.error
+      });
+    }
+
     const signatureName = safeFileName(signatureFileName || `${record.document.originalName}.p7s`, 'signature.p7s');
     const signaturePath = path.join(storageRoot, documentId, signatureName);
 
@@ -471,7 +502,14 @@ app.post('/api/documents/:documentId/signature', requireApiKey, async (req, res,
       methodState: sanitizeSessionValue(methodState),
       signatureInfo: sanitizeSessionValue(signatureInfo || null),
       keyMedia: redactKeyMedia(keyMedia),
-      client: sanitizeSessionValue(client || null)
+      client: sanitizeSessionValue(client || null),
+      verification: verifyResult.skipped ? { skipped: true, error: verifyResult.error } : {
+        valid: true,
+        signerCN: verifyResult.signerCN,
+        signingTime: verifyResult.signingTime,
+        certSerial: verifyResult.certSerial,
+        issuer: verifyResult.issuer
+      }
     };
 
     await saveRecord(documentId, record);
@@ -533,7 +571,8 @@ app.get('/api/documents/:documentId/package', requireApiKey, async (req, res, ne
         methodState: record.signature.methodState || null,
         signatureInfo: record.signature.signatureInfo,
         keyMedia: redactKeyMedia(record.signature.keyMedia),
-        client: record.signature.client
+        client: record.signature.client,
+        verification: record.signature.verification || null
       }
     }, null, 2), { name: 'manifest.json' });
 
