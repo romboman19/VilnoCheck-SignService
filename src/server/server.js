@@ -719,7 +719,7 @@ app.get('/api/documents/:documentId/package', requireApiKey, async (req, res, ne
         signatures: signaturesManifest,
         signingMethod: record.signature?.signingMethod || record.session?.signingMethod,
         verification: record.signature?.verification || null,
-        documentId: id
+        documentId: documentId
       };
       const protocolPdf = await generateSignatureProtocol(protocolData);
       archive.append(protocolPdf, { name: "protocol.pdf" });
