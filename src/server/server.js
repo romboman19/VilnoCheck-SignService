@@ -482,7 +482,7 @@ app.patch('/api/documents/:documentId/session', requireApiKey, async (req, res, 
 app.post('/api/documents/:documentId/signature', requireApiKey, async (req, res, next) => {
   try {
     const { documentId } = req.params;
-    const {
+    let {
       signatures, // Object with base64 signatures for each format
       signatureInfo,
       keyMedia,
