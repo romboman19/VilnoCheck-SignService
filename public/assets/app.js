@@ -10900,25 +10900,11 @@ ${els.log.textContent}`.trim();
         const cadesEnvelopedSig = await signer.signDataEx(data, cadesEnvelopedType);
         signatures.cadesEnveloped = cadesEnvelopedSig.Sign;
         
-        // 3. XAdES detached
-        const xadesDetachedSig = await signer.XAdESSign(data, false);
-        signatures.xadesDetached = xadesDetachedSig;
-        
-        // 4. XAdES enveloped
-        const xadesEnvelopedSig = await signer.XAdESSign(data, true);
-        signatures.xadesEnveloped = xadesEnvelopedSig;
-        
-        // 5. PAdES (only for PDF)
-        const isPdf = state.document.mimeType === 'application/pdf' || state.document.fileName.toLowerCase().endsWith('.pdf');
-        if (isPdf) {
-          try {
-            const padesSig = await signer.PDFSignData(data, 0, 0);
-            signatures.pades = padesSig;
-          } catch (padesErr) {
-            console.warn('PAdES signing failed:', padesErr);
-            signatures.pades = null;
-          }
-        }
+        // 3-5. XAdES and PAdES - TODO: implement with correct API
+        // For now, only CAdES is supported (most widely used)
+        signatures.xadesDetached = null;
+        signatures.xadesEnveloped = null;
+        signatures.pades = null;
         
         // Store primary signature info from CAdES
         state.lastSignature = cadesDetachedSig;
