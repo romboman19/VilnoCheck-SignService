@@ -10554,10 +10554,7 @@ ${els.log.textContent}`.trim();
       const API_KEY2 = window.__API_KEY__ || "";
       const response = await fetch(`/api/documents/${state.document.documentId}/session`, {
         method: "PATCH",
-        headers: {
-          "Content-Type": "application/json",
-          ...(API_KEY2 ? { "x-api-key": API_KEY2 } : {})
-        },
+        headers: API_KEY2 ? { "x-api-key": API_KEY2, "Content-Type": "application/json" } : { "Content-Type": "application/json" },
         body: JSON.stringify({
           ...patch,
           client: patch?.client || currentClientInfo()
@@ -10898,6 +10895,7 @@ ${els.log.textContent}`.trim();
       const uploadResponse = await fetch(`/api/documents/${state.document.documentId}/signature`, {
         headers: API_KEY3 ? { "x-api-key": API_KEY3, "Content-Type": "application/json" } : { "Content-Type": "application/json" },
         method: "POST",
+        headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           signatureBase64: signature.Sign,
           signatureFileName: `${state.document.fileName}.p7s`,
@@ -10937,7 +10935,7 @@ ${els.log.textContent}`.trim();
       if (!state.packageUrl) {
         throw new Error("ZIP-пакет ще не готовий.");
       }
-      window.location.href = state.packageUrl;
+      const API_KEY_DL = window.__API_KEY__ || ""; const sep = state.packageUrl.includes("?") ? "&" : "?"; window.location.href = API_KEY_DL ? state.packageUrl + sep + "apiKey=" + API_KEY_DL : state.packageUrl;
     }
     async function runAction(button, busyText, action) {
       setBusy(button, true, busyText);
