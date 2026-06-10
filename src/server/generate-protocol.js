@@ -2,13 +2,13 @@ const PdfPrinter = require('pdfmake');
 const fs = require('fs');
 const path = require('path');
 
-// Завантажуємо шрифти
+// Використовуємо системні шрифти DejaVu з підтримкою кирилиці
 const fonts = {
-  Roboto: {
-    normal: path.join(__dirname, 'fonts', 'Roboto-Regular.ttf'),
-    bold: path.join(__dirname, 'fonts', 'Roboto-Bold.ttf'),
-    italics: path.join(__dirname, 'fonts', 'Roboto-Regular.ttf'),
-    bolditalics: path.join(__dirname, 'fonts', 'Roboto-Bold.ttf')
+  DejaVu: {
+    normal: path.join(__dirname, 'fonts', 'DejaVuSans.ttf'),
+    bold: path.join(__dirname, 'fonts', 'DejaVuSans-Bold.ttf'),
+    italics: path.join(__dirname, 'fonts', 'DejaVuSans.ttf'),
+    bolditalics: path.join(__dirname, 'fonts', 'DejaVuSans-Bold.ttf')
   }
 };
 
@@ -174,76 +174,76 @@ async function generateSignatureProtocol(data) {
     
     styles: {
       header: {
-        font: 'Roboto',
+        font: 'DejaVu',
         fontSize: 24,
         bold: true,
         alignment: 'center',
         margin: [0, 0, 0, 5]
       },
       subheader: {
-        font: 'Roboto',
+        font: 'DejaVu',
         fontSize: 14,
         alignment: 'center',
         margin: [0, 0, 0, 20]
       },
       date: {
-        font: 'Roboto',
+        font: 'DejaVu',
         fontSize: 11,
         margin: [0, 0, 0, 10]
       },
       statusValid: {
-        font: 'Roboto',
+        font: 'DejaVu',
         fontSize: 14,
         bold: true,
         color: 'green',
         margin: [0, 10]
       },
       statusInvalid: {
-        font: 'Roboto',
+        font: 'DejaVu',
         fontSize: 14,
         bold: true,
         color: 'red',
         margin: [0, 10]
       },
       sectionHeader: {
-        font: 'Roboto',
+        font: 'DejaVu',
         fontSize: 13,
         bold: true,
         margin: [0, 10, 0, 5]
       },
       label: {
-        font: 'Roboto',
+        font: 'DejaVu',
         fontSize: 11,
         bold: true
       },
       value: {
-        font: 'Roboto',
+        font: 'DejaVu',
         fontSize: 11
       },
       valueCode: {
-        font: 'Roboto',
+        font: 'DejaVu',
         fontSize: 9,
         color: '#333'
       },
       signatureItem: {
-        font: 'Roboto',
+        font: 'DejaVu',
         fontSize: 11,
         bold: true,
         margin: [10, 5, 0, 0]
       },
       signatureDetail: {
-        font: 'Roboto',
+        font: 'DejaVu',
         fontSize: 10,
         margin: [20, 2, 0, 0]
       },
       signatureHash: {
-        font: 'Roboto',
+        font: 'DejaVu',
         fontSize: 8,
         color: '#666',
         margin: [20, 2, 0, 5]
       },
       note: {
-        font: 'Roboto',
+        font: 'DejaVu',
         fontSize: 10,
         italics: true,
         color: '#555'
@@ -251,7 +251,7 @@ async function generateSignatureProtocol(data) {
     },
     
     defaultStyle: {
-      font: 'Roboto'
+      font: 'DejaVu'
     },
     
     footer: function(currentPage, pageCount) {
@@ -259,7 +259,7 @@ async function generateSignatureProtocol(data) {
         text: `Згенеровано VilnoCheck Sign Service • ${dateStr}`,
         alignment: 'center',
         fontSize: 9,
-        font: 'Roboto',
+        font: 'DejaVu',
         color: '#666',
         margin: [0, 10]
       };
