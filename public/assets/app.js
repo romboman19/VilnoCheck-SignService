@@ -10893,9 +10893,8 @@ ${els.log.textContent}`.trim();
       const signerSummary = summarizeLoadedSigner();
       const API_KEY3 = window.__API_KEY__ || "";
       const uploadResponse = await fetch(`/api/documents/${state.document.documentId}/signature`, {
-        headers: API_KEY3 ? { "x-api-key": API_KEY3, "Content-Type": "application/json" } : { "Content-Type": "application/json" },
         method: "POST",
-        headers: { "Content-Type": "application/json" },
+        headers: API_KEY3 ? { "x-api-key": API_KEY3, "Content-Type": "application/json" } : { "Content-Type": "application/json" },
         body: JSON.stringify({
           signatureBase64: signature.Sign,
           signatureFileName: `${state.document.fileName}.p7s`,
