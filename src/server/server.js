@@ -221,6 +221,14 @@ app.all('/pki/ProxyHandler', pkiLimiter, express.text({ type: '*/*', limit: '10m
   }
 });
 
+
+// Config endpoint for client-side API key
+app.get('/config.js', (_req, res) => {
+  res.type('application/javascript');
+  const key = process.env.CLIENT_API_KEY || process.env.API_KEY || '';
+  res.send(`window.__API_KEY__ = "${key}";`);
+});
+
 app.use(express.static(path.join(appRoot, 'public')));
 
 function decodeUploadFileName(fileName) {

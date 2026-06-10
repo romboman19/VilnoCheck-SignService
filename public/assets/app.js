@@ -11056,7 +11056,44 @@ ${els.log.textContent}`.trim();
         });
       }
       await setSigningMethod(normalizeSigningMethod(state.bootstrap?.defaults?.signingMethod || state.signingMethod), { persist: false });
+      const urlParams = new URLSearchParams(window.location.search);
+      const apiKey = urlParams.get("apiKey");
+      if (apiKey) {
+        window.__API_KEY__ = apiKey;
+        log("API key loaded from URL");
+      }
     }
+    async function pollSmartIdStatus(sessionId, onComplete) {
+      let attempts = 0;
+      const MAX_ATTEMPTS = 90;
+      const API_KEY = window.__API_KEY__ || "";
+      const interval = setInterval(async () => {
+        attempts++;
+        if (attempts > MAX_ATTEMPTS) {
+          clearInterval(interval);
+          return onComplete(new Error("SmartID: timeout (3 min)"));
+        }
+        try {
+          const resp = await fetch(`/api/providers/privatbank-smartid/status/${sessionId}`, {
+            headers: API_KEY ? { "x-api-key": API_KEY } : {}
+          });
+          const data = await resp.json();
+          if (data.status === "confirmed" && data.signature) {
+            clearInterval(interval);
+            onComplete(null, data.signature);
+          } else if (data.status === "rejected") {
+            clearInterval(interval);
+            onComplete(new Error("SmartID: відхилено користувачем"));
+          } else if (data.status === "expired") {
+            clearInterval(interval);
+            onComplete(new Error("SmartID: сесія закінчилась"));
+          }
+        } catch (err) {
+          console.warn("[SmartID polling] error:", err.message);
+        }
+      }, 2e3);
+    }
+    window.pollSmartIdStatus = pollSmartIdStatus;
     void initialize().catch((error) => {
       showError(setKeyStatus, error);
       log(`ПОМИЛКА: ${error?.message || String(error)}`);
