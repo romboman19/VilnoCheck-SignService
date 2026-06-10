@@ -630,9 +630,8 @@ app.get('/api/documents/:documentId/package', requireApiKey, async (req, res, ne
 
     const baseName = path.parse(record.document.originalName).name;
 
-    // Original document in original/ folder
+    // Original document in original/ folder only
     archive.file(record.document.path, { name: `original/${record.document.originalName}` });
-    archive.file(record.document.path, { name: record.document.originalName });
 
     // CAdES folder
     if (hasSignatures) {
@@ -647,22 +646,15 @@ app.get('/api/documents/:documentId/package', requireApiKey, async (req, res, ne
       archive.file(record.signature.path, { name: `CAdES/${record.signature.fileName}` });
     }
 
-    // XAdES folder
-    if (hasSignatures) {
-      if (record.signatures.xadesDetached) {
-        archive.file(record.signatures.xadesDetached.path, { name: `XAdES/${record.signatures.xadesDetached.fileName}` });
-      }
-      if (record.signatures.xadesEnveloped) {
-        archive.file(record.signatures.xadesEnveloped.path, { name: `XAdES/${record.signatures.xadesEnveloped.fileName}` });
-      }
-    }
+    // XAdES folder (currently empty - XAdES not yet implemented)
+    archive.append('XAdES format is not yet implemented.', { name: 'XAdES/README.txt' });
 
     // PAdES folder
     if (hasSignatures && record.signatures.pades) {
       archive.file(record.signatures.pades.path, { name: `PAdES/${record.signatures.pades.fileName}` });
     } else {
       // Add README for non-PDF or missing PAdES
-      archive.append('PAdES format is only available for PDF documents.', { name: 'PAdES/README.txt' });
+      archive.append('PAdES format is not yet implemented.', { name: 'PAdES/README.txt' });
     }
 
     // Build manifest with all signatures
