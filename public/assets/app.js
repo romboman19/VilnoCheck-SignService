@@ -10936,7 +10936,10 @@ async function signDocument() {
     // ========================================
     console.log('[Sign] Generating XAdES detached...');
     try {
-      const cert = await signer.GetOwnCertificate();
+      // Get certificate from readedKey
+      const cert = (state.readedKey?.certificates?.[0] instanceof EndUserCertificate) 
+        ? state.readedKey.certificates[0]
+        : new EndUserCertificate(state.readedKey?.certificates?.[0]);
       const emptySign = await signer.XAdESCreateEmptySign(
         EndUserConstants4.EndUserSignType.XAdES_BES, null, null, null
       );
@@ -10966,7 +10969,10 @@ async function signDocument() {
     // ========================================
     console.log('[Sign] Generating XAdES enveloped...');
     try {
-      const cert = await signer.GetOwnCertificate();
+      // Get certificate from readedKey
+      const cert = (state.readedKey?.certificates?.[0] instanceof EndUserCertificate) 
+        ? state.readedKey.certificates[0]
+        : new EndUserCertificate(state.readedKey?.certificates?.[0]);
       const emptySign = await signer.XAdESCreateEmptySign(
         EndUserConstants4.EndUserSignType.XAdES_BES, null, null, null
       );
@@ -10997,7 +11003,10 @@ async function signDocument() {
     if (isPdf) {
       console.log('[Sign] Generating PAdES...');
       try {
-        const cert = await signer.GetOwnCertificate();
+        // Get certificate from readedKey
+        const cert = (state.readedKey?.certificates?.[0] instanceof EndUserCertificate) 
+          ? state.readedKey.certificates[0]
+          : new EndUserCertificate(state.readedKey?.certificates?.[0]);
         const emptySign = await signer.PDFCreateEmptySign(
           EndUserConstants4.EndUserSignType.PAdES_BES_LTA,
           null, 1, [100, 100, 200, 150],
