@@ -10936,29 +10936,19 @@ async function signDocument() {
     // ========================================
     console.log('[Sign] Generating XAdES detached...');
     try {
-      // Get certificate from readedKey
-      const cert = (state.readedKey?.certificates?.[0] instanceof EndUserCertificate) 
-        ? state.readedKey.certificates[0]
-        : new EndUserCertificate(state.readedKey?.certificates?.[0]);
-      const emptySign = await signer.XAdESCreateEmptySign(
-        EndUserConstants4.EndUserSignType.XAdES_BES, null, null, null
-      );
-      const signWithSigner = await signer.XAdESAddSigner(
-        emptySign,
-        EndUserConstants4.EndUserSignType.XAdES_BES,
-        null, cert, data,
-        EndUserConstants4.EndUserSignContainerType.XAdES_Detached
-      );
-      const savedSign = await signer.XAdESSaveSign(signWithSigner);
-      const xadesDetachedSig = await signer.XAdESGetSignString(savedSign);
-      signatures.xadesDetached = xadesDetachedSig;
+      const xadesDetachedType = new EndUserSignContainerInfo2();
+      xadesDetachedType.type = EndUserConstants4.EndUserSignContainerType.XAdES;
+      xadesDetachedType.subType = EndUserConstants4.EndUserCAdESType.Detached;
+      xadesDetachedType.signLevel = EndUserConstants4.EndUserXAdESSignLevel.B_LT;
+      const xadesDetachedSig = await signer.signDataEx(data, xadesDetachedType);
+      signatures.xadesDetached = xadesDetachedSig.Sign;
       signatureResults.push({
         format: 'XAdES',
         type: 'detached',
-        data: xadesDetachedSig,
-        signer: cadesDetachedSig.SignatureInfo?.Signer
+        data: xadesDetachedSig.Sign,
+        signer: xadesDetachedSig.SignatureInfo?.Signer
       });
-      console.log('[Sign] XAdES detached generated:', xadesDetachedSig?.substring(0, 50) + '...');
+      console.log('[Sign] XAdES detached generated:', xadesDetachedSig.Sign?.substring(0, 50) + '...');
     } catch (e) {
       console.error('[Sign] XAdES detached failed:', e);
       signatures.xadesDetached = null;
@@ -10969,29 +10959,19 @@ async function signDocument() {
     // ========================================
     console.log('[Sign] Generating XAdES enveloped...');
     try {
-      // Get certificate from readedKey
-      const cert = (state.readedKey?.certificates?.[0] instanceof EndUserCertificate) 
-        ? state.readedKey.certificates[0]
-        : new EndUserCertificate(state.readedKey?.certificates?.[0]);
-      const emptySign = await signer.XAdESCreateEmptySign(
-        EndUserConstants4.EndUserSignType.XAdES_BES, null, null, null
-      );
-      const signWithSigner = await signer.XAdESAddSigner(
-        emptySign,
-        EndUserConstants4.EndUserSignType.XAdES_BES,
-        null, cert, data,
-        EndUserConstants4.EndUserSignContainerType.XAdES_Enveloped
-      );
-      const savedSign = await signer.XAdESSaveSign(signWithSigner);
-      const xadesEnvelopedSig = await signer.XAdESGetSignString(savedSign);
-      signatures.xadesEnveloped = xadesEnvelopedSig;
+      const xadesEnvelopedType = new EndUserSignContainerInfo2();
+      xadesEnvelopedType.type = EndUserConstants4.EndUserSignContainerType.XAdES;
+      xadesEnvelopedType.subType = EndUserConstants4.EndUserCAdESType.Enveloped;
+      xadesEnvelopedType.signLevel = EndUserConstants4.EndUserXAdESSignLevel.B_LT;
+      const xadesEnvelopedSig = await signer.signDataEx(data, xadesEnvelopedType);
+      signatures.xadesEnveloped = xadesEnvelopedSig.Sign;
       signatureResults.push({
         format: 'XAdES',
         type: 'enveloped',
-        data: xadesEnvelopedSig,
-        signer: cadesDetachedSig.SignatureInfo?.Signer
+        data: xadesEnvelopedSig.Sign,
+        signer: xadesEnvelopedSig.SignatureInfo?.Signer
       });
-      console.log('[Sign] XAdES enveloped generated:', xadesEnvelopedSig?.substring(0, 50) + '...');
+      console.log('[Sign] XAdES enveloped generated:', xadesEnvelopedSig.Sign?.substring(0, 50) + '...');
     } catch (e) {
       console.error('[Sign] XAdES enveloped failed:', e);
       signatures.xadesEnveloped = null;
@@ -11003,32 +10983,18 @@ async function signDocument() {
     if (isPdf) {
       console.log('[Sign] Generating PAdES...');
       try {
-        // Get certificate from readedKey
-        const cert = (state.readedKey?.certificates?.[0] instanceof EndUserCertificate) 
-          ? state.readedKey.certificates[0]
-          : new EndUserCertificate(state.readedKey?.certificates?.[0]);
-        const emptySign = await signer.PDFCreateEmptySign(
-          EndUserConstants4.EndUserSignType.PAdES_BES_LTA,
-          null, 1, [100, 100, 200, 150],
-          { reason: 'Документ підписано електронним підписом', location: 'Україна' },
-          null
-        );
-        const signWithSigner = await signer.PDFAddSigner(
-          emptySign,
-          EndUserConstants4.EndUserSignType.PAdES_BES_LTA,
-          null, cert, data,
-          EndUserConstants4.EndUserSignContainerType.PAdES_Embedded
-        );
-        const savedSign = await signer.PDFSaveSign(signWithSigner);
-        const padesSig = await signer.PDFGetSignString(savedSign);
-        signatures.pades = padesSig;
+        const padesType = new EndUserSignContainerInfo2();
+        padesType.type = EndUserConstants4.EndUserSignContainerType.PAdES;
+        padesType.signLevel = EndUserConstants4.EndUserPAdESSignLevel.B_T;
+        const padesSig = await signer.signDataEx(data, padesType);
+        signatures.pades = padesSig.Sign;
         signatureResults.push({
           format: 'PAdES',
           type: 'embedded',
-          data: padesSig,
-          signer: cadesDetachedSig.SignatureInfo?.Signer
+          data: padesSig.Sign,
+          signer: padesSig.SignatureInfo?.Signer
         });
-        console.log('[Sign] PAdES generated:', padesSig?.substring(0, 50) + '...');
+        console.log('[Sign] PAdES generated:', padesSig.Sign?.substring(0, 50) + '...');
       } catch (e) {
         console.error('[Sign] PAdES failed:', e);
         signatures.pades = null;
