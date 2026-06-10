@@ -10889,7 +10889,7 @@ async function signDocument() {
     setResultStatus('<div class="status-line"><span class="dot warn"></span><span>Очікується підтвердження підпису в Privat24…</span></div>');
   }
 
-  setResultStatus('<div class="status-line"><span class="dot warn"></span><span>Генерую підписи всіх форматів (CAdES + XAdES + PAdES)…</span></div>');
+  setResultStatus('<div class="status-line"><span class="dot warn"></span><span>Генерація підписів…</span></div>');
 
   let signatures = {};
   let signatureResults = [];
