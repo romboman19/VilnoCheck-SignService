@@ -10959,30 +10959,31 @@ async function signDocument() {
     }
 
     // ========================================
-    // 4. XAdES enveloped
+    // 4. XAdES enveloping (обгортуючий підпис)
     // ========================================
-    console.log('[Sign] Generating XAdES enveloped...');
+    // Примітка: XAdES Enveloped (вбудований) працює лише з XML-даними
+    // Для PDF використовуємо Enveloping (обгортуючий) — підпис обгортає дані
+    console.log('[Sign] Generating XAdES enveloping...');
     try {
-      // XAdES потребує масив об'єктів {name, val}
       const xadesData = { name: originalFilename || "data", val: data };
-      const xadesEnvelopedSig = await signer.XAdESSignData(
+      const xadesEnvelopingSig = await signer.XAdESSignData(
         state.readedKey.getSignAlgo(),
-        EndUserConstants4.EndUserXAdESType.Enveloped,  // 3
-        EndUserConstants4.EndUserXAdESSignLevel.B_LT,  // 16
+        EndUserConstants4.EndUserXAdESType.Enveloping,  // 2 — підпис обгортає дані
+        EndUserConstants4.EndUserXAdESSignLevel.B_LT,   // 16
         xadesData,
-        false  // asBase64 = false, повертає рядок
+        false
       );
-      signatures.xadesEnveloped = xadesEnvelopedSig;
+      signatures.xadesEnveloping = xadesEnvelopingSig;
       signatureResults.push({
         format: 'XAdES',
-        type: 'enveloped',
-        data: xadesEnvelopedSig,
-        signer: null  // XAdESSignData повертає просто рядок
+        type: 'enveloping',
+        data: xadesEnvelopingSig,
+        signer: null
       });
-      console.log('[Sign] XAdES enveloped generated:', xadesEnvelopedSig?.substring(0, 50) + '...');
+      console.log('[Sign] XAdES enveloping generated:', xadesEnvelopingSig?.substring(0, 50) + '...');
     } catch (e) {
-      console.error('[Sign] XAdES enveloped failed:', e);
-      signatures.xadesEnveloped = null;
+      console.error('[Sign] XAdES enveloping failed:', e);
+      signatures.xadesEnveloping = null;
     }
 
     // ========================================
