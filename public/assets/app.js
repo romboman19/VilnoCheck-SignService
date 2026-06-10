@@ -10931,62 +10931,9 @@ async function signDocument() {
     });
     console.log('[Sign] CAdES enveloped generated:', cadesEnvelopedSig.Sign?.substring(0, 50) + '...');
 
-    // ========================================
-    // 3. XAdES detached
-    // ========================================
-    console.log('[Sign] Generating XAdES detached...');
-    try {
-      // XAdESSignData з параметром asBase64 = true
-      const dataBase64 = arrayBufferToBase64(data);
-      const xadesData = { name: originalFilename || "data.bin", val: dataBase64 };
-      const xadesDetachedSig = await signer.XAdESSignData(
-        state.readedKey.getSignAlgo(),
-        EndUserConstants4.EndUserXAdESType.Detached,
-        EndUserConstants4.EndUserXAdESSignLevel.B_LT,
-        xadesData,
-        true  // asBase64 = true
-      );
-      signatures.xadesDetached = xadesDetachedSig;
-      signatureResults.push({
-        format: 'XAdES',
-        type: 'detached',
-        data: xadesDetachedSig,
-        signer: null
-      });
-      console.log('[Sign] XAdES detached generated:', xadesDetachedSig?.substring(0, 50) + '...');
-    } catch (e) {
-      console.error('[Sign] XAdES detached failed:', e);
-      signatures.xadesDetached = null;
-    }
 
-    // ========================================
-    // 4. XAdES enveloping (обгортуючий підпис)
-    // ========================================
-    // Примітка: XAdES Enveloped (вбудований) працює лише з XML-даними
-    // Для PDF використовуємо Enveloping (обгортуючий) — підпис обгортає дані
-    console.log('[Sign] Generating XAdES enveloping...');
-    try {
-      const dataBase64 = arrayBufferToBase64(data);
-      const xadesData = { name: originalFilename || "data.bin", val: dataBase64 };
-      const xadesEnvelopingSig = await signer.XAdESSignData(
-        state.readedKey.getSignAlgo(),
-        EndUserConstants4.EndUserXAdESType.Enveloping,
-        EndUserConstants4.EndUserXAdESSignLevel.B_LT,
-        xadesData,
-        true  // asBase64 = true
-      );
-      signatures.xadesEnveloping = xadesEnvelopingSig;
-      signatureResults.push({
-        format: 'XAdES',
-        type: 'enveloping',
-        data: xadesEnvelopingSig,
-        signer: null
-      });
-      console.log('[Sign] XAdES enveloping generated:', xadesEnvelopingSig?.substring(0, 50) + '...');
-    } catch (e) {
-      console.error('[Sign] XAdES enveloping failed:', e);
-      signatures.xadesEnveloping = null;
-    }
+
+
 
     // ========================================
     // 5. PAdES (тільки для PDF)
@@ -11031,8 +10978,6 @@ async function signDocument() {
   console.log('[Sign] Sending signatures to server:', {
     cadesDetached: signatures.cadesDetached ? 'present' : 'missing',
     cadesEnveloped: signatures.cadesEnveloped ? 'present' : 'missing',
-    xadesDetached: signatures.xadesDetached ? 'present' : 'missing',
-    xadesEnveloped: signatures.xadesEnveloped ? 'present' : 'missing',
     pades: signatures.pades ? 'present' : 'missing'
   });
 
@@ -11074,8 +11019,6 @@ async function signDocument() {
   const formatStatus = [];
   if (signatures.cadesDetached) formatStatus.push('CAdES detached ✓');
   if (signatures.cadesEnveloped) formatStatus.push('CAdES enveloped ✓');
-  if (signatures.xadesDetached) formatStatus.push('XAdES detached ✓');
-  if (signatures.xadesEnveloped) formatStatus.push('XAdES enveloped ✓');
   if (signatures.pades) formatStatus.push('PAdES ✓');
   if (!signatures.pades && isPdf) formatStatus.push('PAdES ✗ (failed)');
 

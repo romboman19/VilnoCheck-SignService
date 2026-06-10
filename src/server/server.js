@@ -492,8 +492,7 @@ app.post('/api/documents/:documentId/signature', requireApiKey, async (req, res,
       session
     } = req.body || {};
 
-    // signatures can be either:
-    // - object: { cadesDetached, cadesEnveloped, xadesDetached, xadesEnveloped, pades }
+    // signatures can be either:    // - object: { cadesDetached, cadesEnveloped, pades }
     // - array: [{ format, type, data }, ...]
     if (!signatures || typeof signatures !== 'object') {
       return res.status(400).json({ error: 'signatures object or array is required' });
@@ -508,10 +507,6 @@ app.post('/api/documents/:documentId/signature', requireApiKey, async (req, res,
           sigObject.cadesDetached = sig.data;
         } else if (sig.format === 'CAdES' && sig.type === 'enveloped') {
           sigObject.cadesEnveloped = sig.data;
-        } else if (sig.format === 'XAdES' && sig.type === 'detached') {
-          sigObject.xadesDetached = sig.data;
-        } else if (sig.format === 'XAdES' && sig.type === 'enveloped') {
-          sigObject.xadesEnveloped = sig.data;
         } else if (sig.format === 'PAdES') {
           sigObject.pades = sig.data;
         }
@@ -668,9 +663,6 @@ app.get('/api/documents/:documentId/package', requireApiKey, async (req, res, ne
       archive.file(record.signature.path, { name: `CAdES/${record.signature.fileName}` });
     }
 
-    // XAdES folder (currently empty - XAdES not yet implemented)
-    archive.append('XAdES format is not yet implemented.', { name: 'XAdES/README.txt' });
-
     // PAdES folder
     if (hasSignatures && record.signatures.pades) {
       archive.file(record.signatures.pades.path, { name: `PAdES/${record.signatures.pades.fileName}` });
@@ -691,16 +683,6 @@ app.get('/api/documents/:documentId/package', requireApiKey, async (req, res, ne
         size: record.signatures.cadesEnveloped.size,
         sha256: record.signatures.cadesEnveloped.sha256
       } : null,
-      xadesDetached: record.signatures.xadesDetached ? {
-        fileName: record.signatures.xadesDetached.fileName,
-        size: record.signatures.xadesDetached.size,
-        sha256: record.signatures.xadesDetached.sha256
-      } : null,
-      xadesEnveloped: record.signatures.xadesEnveloped ? {
-        fileName: record.signatures.xadesEnveloped.fileName,
-        size: record.signatures.xadesEnveloped.size,
-        sha256: record.signatures.xadesEnveloped.sha256
-      } : null,
       pades: record.signatures.pades ? {
         fileName: record.signatures.pades.fileName,
         size: record.signatures.pades.size,
@@ -714,8 +696,6 @@ app.get('/api/documents/:documentId/package', requireApiKey, async (req, res, ne
         sha256: record.signature.sha256
       },
       cadesEnveloped: null,
-      xadesDetached: null,
-      xadesEnveloped: null,
       pades: null
     };
 
