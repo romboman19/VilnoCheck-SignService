@@ -10936,19 +10936,23 @@ async function signDocument() {
     // ========================================
     console.log('[Sign] Generating XAdES detached...');
     try {
-      const xadesDetachedType = new EndUserSignContainerInfo2();
-      xadesDetachedType.type = EndUserConstants4.EndUserSignContainerType.XAdES;
-      xadesDetachedType.subType = EndUserConstants4.EndUserCAdESType.Detached;
-      xadesDetachedType.signLevel = EndUserConstants4.EndUserXAdESSignLevel.B_LT;
-      const xadesDetachedSig = await signer.signDataEx(data, xadesDetachedType);
-      signatures.xadesDetached = xadesDetachedSig.Sign;
+      // XAdES потребує масив об'єктів {name, val}
+      const xadesData = { name: originalFilename || "data", val: data };
+      const xadesDetachedSig = await signer.XAdESSignData(
+        state.readedKey.getSignAlgo(),
+        EndUserConstants4.EndUserXAdESType.Detached,  // 1
+        EndUserConstants4.EndUserXAdESSignLevel.B_LT, // 16
+        xadesData,
+        false  // asBase64 = false, повертає рядок
+      );
+      signatures.xadesDetached = xadesDetachedSig;
       signatureResults.push({
         format: 'XAdES',
         type: 'detached',
-        data: xadesDetachedSig.Sign,
-        signer: xadesDetachedSig.SignatureInfo?.Signer
+        data: xadesDetachedSig,
+        signer: null  // XAdESSignData повертає просто рядок
       });
-      console.log('[Sign] XAdES detached generated:', xadesDetachedSig.Sign?.substring(0, 50) + '...');
+      console.log('[Sign] XAdES detached generated:', xadesDetachedSig?.substring(0, 50) + '...');
     } catch (e) {
       console.error('[Sign] XAdES detached failed:', e);
       signatures.xadesDetached = null;
@@ -10959,19 +10963,23 @@ async function signDocument() {
     // ========================================
     console.log('[Sign] Generating XAdES enveloped...');
     try {
-      const xadesEnvelopedType = new EndUserSignContainerInfo2();
-      xadesEnvelopedType.type = EndUserConstants4.EndUserSignContainerType.XAdES;
-      xadesEnvelopedType.subType = EndUserConstants4.EndUserCAdESType.Enveloped;
-      xadesEnvelopedType.signLevel = EndUserConstants4.EndUserXAdESSignLevel.B_LT;
-      const xadesEnvelopedSig = await signer.signDataEx(data, xadesEnvelopedType);
-      signatures.xadesEnveloped = xadesEnvelopedSig.Sign;
+      // XAdES потребує масив об'єктів {name, val}
+      const xadesData = { name: originalFilename || "data", val: data };
+      const xadesEnvelopedSig = await signer.XAdESSignData(
+        state.readedKey.getSignAlgo(),
+        EndUserConstants4.EndUserXAdESType.Enveloped,  // 3
+        EndUserConstants4.EndUserXAdESSignLevel.B_LT,  // 16
+        xadesData,
+        false  // asBase64 = false, повертає рядок
+      );
+      signatures.xadesEnveloped = xadesEnvelopedSig;
       signatureResults.push({
         format: 'XAdES',
         type: 'enveloped',
-        data: xadesEnvelopedSig.Sign,
-        signer: xadesEnvelopedSig.SignatureInfo?.Signer
+        data: xadesEnvelopedSig,
+        signer: null  // XAdESSignData повертає просто рядок
       });
-      console.log('[Sign] XAdES enveloped generated:', xadesEnvelopedSig.Sign?.substring(0, 50) + '...');
+      console.log('[Sign] XAdES enveloped generated:', xadesEnvelopedSig?.substring(0, 50) + '...');
     } catch (e) {
       console.error('[Sign] XAdES enveloped failed:', e);
       signatures.xadesEnveloped = null;
