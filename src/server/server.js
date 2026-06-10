@@ -709,23 +709,6 @@ app.get('/api/documents/:documentId/package', requireApiKey, async (req, res, ne
       }
     }, null, 2), { name: 'manifest.json' });
 
-    // Generate and add PDF protocol
-    try {
-      const protocolData = {
-        generatedAt: new Date().toISOString(),
-        version: serviceVersion,
-        document: record.document,
-        signer: record.signature?.signatureInfo?.OwnerInfo || record.session?.signer || null,
-        signatures: signaturesManifest,
-        signingMethod: record.signature?.signingMethod || record.session?.signingMethod,
-        verification: record.signature?.verification || null
-      };
-      const protocolPdf = await generateSignatureProtocol(protocolData);
-      archive.append(protocolPdf, { name: 'protocol.pdf' });
-    } catch (err) {
-      console.error('[protocol] Failed to generate PDF protocol:', err.message);
-    }
-
     await archive.finalize();
   } catch (error) {
     if (error && error.code === 'ENOENT') {
