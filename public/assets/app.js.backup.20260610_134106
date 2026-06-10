@@ -10863,236 +10863,104 @@ ${els.log.textContent}`.trim();
         signer: summarizeLoadedSigner()
       });
     }
-    // Оновлена функція signDocument з підтримкою CAdES + XAdES + PAdES
-// Замінити рядки 10866-10950 в app.js на цей код
-
-async function signDocument() {
-  if (!state.document?.signingPayloadBase64) {
-    throw new Error("Спочатку завантажте документ.");
-  }
-  if (!state.readedKey) {
-    throw new Error("Спочатку зчитайте ключ обраним методом.");
-  }
-
-  const signer = state.signingMethod === SIGNING_METHOD.SMARTID
-    ? (await ensureSmartIdReady()).signer
-    : await getSigner();
-
-  const data = base64ToUint8Array(state.document.signingPayloadBase64);
-  const originalFilename = state.document.fileName || "document.pdf";
-  const isPdf = originalFilename.toLowerCase().endsWith('.pdf');
-
-  if (state.signingMethod === SIGNING_METHOD.SMARTID) {
-    state.smartIdPendingAction = "sign";
-    state.smartIdConfirmEvent = null;
-    refreshSmartIdUi();
-    setResultStatus('<div class="status-line"><span class="dot warn"></span><span>Очікується підтвердження підпису в Privat24…</span></div>');
-  }
-
-  setResultStatus('<div class="status-line"><span class="dot warn"></span><span>Генерую підписи всіх форматів (CAdES + XAdES + PAdES)…</span></div>');
-
-  let signatures = {};
-  let signatureResults = [];
-
-  try {
-    // ========================================
-    // 1. CAdES detached
-    // ========================================
-    console.log('[Sign] Generating CAdES detached...');
-    const cadesDetachedType = new EndUserSignContainerInfo2();
-    cadesDetachedType.type = EndUserConstants4.EndUserSignContainerType.CAdES;
-    cadesDetachedType.subType = EndUserConstants4.EndUserCAdESType.Detached;
-    cadesDetachedType.signLevel = EndUserConstants4.EndUserSignType.CAdES_X_Long;
-    const cadesDetachedSig = await signer.signDataEx(data, cadesDetachedType);
-    signatures.cadesDetached = cadesDetachedSig.Sign;
-    signatureResults.push({
-      format: 'CAdES',
-      type: 'detached',
-      data: cadesDetachedSig.Sign,
-      signer: cadesDetachedSig.SignatureInfo?.Signer
-    });
-    console.log('[Sign] CAdES detached generated:', cadesDetachedSig.Sign?.substring(0, 50) + '...');
-
-    // ========================================
-    // 2. CAdES enveloped
-    // ========================================
-    console.log('[Sign] Generating CAdES enveloped...');
-    const cadesEnvelopedType = new EndUserSignContainerInfo2();
-    cadesEnvelopedType.type = EndUserConstants4.EndUserSignContainerType.CAdES;
-    cadesEnvelopedType.subType = EndUserConstants4.EndUserCAdESType.Enveloped;
-    cadesEnvelopedType.signLevel = EndUserConstants4.EndUserSignType.CAdES_X_Long;
-    const cadesEnvelopedSig = await signer.signDataEx(data, cadesEnvelopedType);
-    signatures.cadesEnveloped = cadesEnvelopedSig.Sign;
-    signatureResults.push({
-      format: 'CAdES',
-      type: 'enveloped',
-      data: cadesEnvelopedSig.Sign,
-      signer: cadesEnvelopedSig.SignatureInfo?.Signer
-    });
-    console.log('[Sign] CAdES enveloped generated:', cadesEnvelopedSig.Sign?.substring(0, 50) + '...');
-
-    // ========================================
-    // 3. XAdES detached
-    // ========================================
-    console.log('[Sign] Generating XAdES detached...');
-    try {
-      // XAdES-BES detached: xadesType=0, signLevel=1 (B-B)
-      // references = [{ name: filename, data: fileBytes }]
-      const xadesDetachedSig = await signer.XAdESSignData(
-        0,  // xadesType: 0 = XAdES-BES
-        1,  // signLevel: 1 = B-B (detached)
-        [{ name: originalFilename, data: data }],
-        true // asBase64String = true
-      );
-      signatures.xadesDetached = xadesDetachedSig;
-      signatureResults.push({
-        format: 'XAdES',
-        type: 'detached',
-        data: xadesDetachedSig,
-        signer: cadesDetachedSig.SignatureInfo?.Signer
-      });
-      console.log('[Sign] XAdES detached generated:', xadesDetachedSig?.substring(0, 50) + '...');
-    } catch (xadesDetachedError) {
-      console.error('[Sign] XAdES detached failed:', xadesDetachedError);
-      signatures.xadesDetached = null;
-    }
-
-    // ========================================
-    // 4. XAdES enveloped
-    // ========================================
-    console.log('[Sign] Generating XAdES enveloped...');
-    try {
-      // XAdES-BES enveloped: signLevel=2 (B-T includes data)
-      const xadesEnvelopedSig = await signer.XAdESSignData(
-        0,  // xadesType: 0 = XAdES-BES
-        2,  // signLevel: 2 = B-T (enveloped with timestamp)
-        [{ name: originalFilename, data: data }],
-        true // asBase64String = true
-      );
-      signatures.xadesEnveloped = xadesEnvelopedSig;
-      signatureResults.push({
-        format: 'XAdES',
-        type: 'enveloped',
-        data: xadesEnvelopedSig,
-        signer: cadesDetachedSig.SignatureInfo?.Signer
-      });
-      console.log('[Sign] XAdES enveloped generated:', xadesEnvelopedSig?.substring(0, 50) + '...');
-    } catch (xadesEnvelopedError) {
-      console.error('[Sign] XAdES enveloped failed:', xadesEnvelopedError);
-      signatures.xadesEnveloped = null;
-    }
-
-    // ========================================
-    // 5. PAdES (тільки для PDF)
-    // ========================================
-    if (isPdf) {
-      console.log('[Sign] Generating PAdES...');
-      try {
-        // PAdES-BES: signType=0
-        // asBase64String = false → Uint8Array, потім конвертуємо в base64
-        const padesUint8 = await signer.PDFSignData(
-          data,    // pdfData: Uint8Array
-          0,       // signType: 0 = PAdES-BES
-          false    // asBase64String: false → Uint8Array
-        );
-        // Конвертуємо Uint8Array в base64 для відправки на сервер
-        const padesBase64 = btoa(String.fromCharCode.apply(null, padesUint8));
-        signatures.pades = padesBase64;
-        signatureResults.push({
-          format: 'PAdES',
-          type: 'embedded',
-          data: padesBase64,
-          signer: cadesDetachedSig.SignatureInfo?.Signer
-        });
-        console.log('[Sign] PAdES generated:', padesBase64?.substring(0, 50) + '...');
-      } catch (padesError) {
-        console.error('[Sign] PAdES failed:', padesError);
-        signatures.pades = null;
+    async function signDocument() {
+      if (!state.document?.signingPayloadBase64) {
+        throw new Error("Спочатку завантажте документ.");
       }
-    } else {
-      console.log('[Sign] Skipping PAdES (not a PDF file)');
-      signatures.pades = null;
-    }
-
-    // Store primary signature info from CAdES
-    state.lastSignature = cadesDetachedSig;
-  } finally {
-    state.smartIdPendingAction = null;
-  }
-
-  const methodState = currentMethodState();
-  const signerSummary = summarizeLoadedSigner();
-  const API_KEY3 = window.__API_KEY__ || "";
-
-  setResultStatus('<div class="status-line"><span class="dot warn"></span><span>Передаю підписи на сервер…</span></div>');
-
-  // Log what we're sending
-  console.log('[Sign] Sending signatures to server:', {
-    cadesDetached: signatures.cadesDetached ? 'present' : 'missing',
-    cadesEnveloped: signatures.cadesEnveloped ? 'present' : 'missing',
-    xadesDetached: signatures.xadesDetached ? 'present' : 'missing',
-    xadesEnveloped: signatures.xadesEnveloped ? 'present' : 'missing',
-    pades: signatures.pades ? 'present' : 'missing'
-  });
-
-  // Send as array format expected by new backend
-  const uploadResponse = await fetch(`/api/documents/${state.document.documentId}/signature`, {
-    method: "POST",
-    headers: API_KEY3
-      ? { "x-api-key": API_KEY3, "Content-Type": "application/json" }
-      : { "Content-Type": "application/json" },
-    body: JSON.stringify({
-      signatures: signatureResults,  // Array of { format, type, data, signer }
-      signatureInfo: state.lastSignature?.SignatureInfo,
-      signingMethod: state.signingMethod,
-      methodState,
-      keyMedia: state.signingMethod === SIGNING_METHOD.IIT_TOKEN
-        ? redactKeyMediaForUpload(state.readedKey.keyMedia)
-        : null,
-      session: {
-        signingMethod: state.signingMethod,
-        status: "signed",
-        methodState,
-        signer: signerSummary,
-        client: currentClientInfo()
-      },
-      client: currentClientInfo()
-    })
-  });
-
-  const uploadPayload = await uploadResponse.json();
-  if (!uploadResponse.ok) {
-    throw new Error(uploadPayload.error || "Не вдалося передати підпис на сервер.");
-  }
-
-  state.packageUrl = uploadPayload.downloadUrl;
-  els.downloadBtn.disabled = false;
-  updateSessionInfo();
-
-  // Build success message showing all formats
-  const formatStatus = [];
-  if (signatures.cadesDetached) formatStatus.push('CAdES detached ✓');
-  if (signatures.cadesEnveloped) formatStatus.push('CAdES enveloped ✓');
-  if (signatures.xadesDetached) formatStatus.push('XAdES detached ✓');
-  if (signatures.xadesEnveloped) formatStatus.push('XAdES enveloped ✓');
-  if (signatures.pades) formatStatus.push('PAdES ✓');
-  if (!signatures.pades && isPdf) formatStatus.push('PAdES ✗ (failed)');
-
-  setResultStatus(`
+      if (!state.readedKey) {
+        throw new Error("Спочатку зчитайте ключ обраним методом.");
+      }
+      const signer = state.signingMethod === SIGNING_METHOD.SMARTID ? (await ensureSmartIdReady()).signer : await getSigner();
+      const data = base64ToUint8Array(state.document.signingPayloadBase64);
+      
+      if (state.signingMethod === SIGNING_METHOD.SMARTID) {
+        state.smartIdPendingAction = "sign";
+        state.smartIdConfirmEvent = null;
+        refreshSmartIdUi();
+        setResultStatus('<div class="status-line"><span class="dot warn"></span><span>Очікується підтвердження підпису в Privat24…</span></div>');
+      }
+      
+      setResultStatus('<div class="status-line"><span class="dot warn"></span><span>Генерую підписи всіх форматів…</span></div>');
+      
+      let signatures = {};
+      try {
+        // 1. CAdES detached
+        const cadesDetachedType = new EndUserSignContainerInfo2();
+        cadesDetachedType.type = EndUserConstants4.EndUserSignContainerType.CAdES;
+        cadesDetachedType.subType = EndUserConstants4.EndUserCAdESType.Detached;
+        cadesDetachedType.signLevel = EndUserConstants4.EndUserSignType.CAdES_X_Long;
+        const cadesDetachedSig = await signer.signDataEx(data, cadesDetachedType);
+        signatures.cadesDetached = cadesDetachedSig.Sign;
+        
+        // 2. CAdES enveloped
+        const cadesEnvelopedType = new EndUserSignContainerInfo2();
+        cadesEnvelopedType.type = EndUserConstants4.EndUserSignContainerType.CAdES;
+        cadesEnvelopedType.subType = EndUserConstants4.EndUserCAdESType.Enveloped;
+        cadesEnvelopedType.signLevel = EndUserConstants4.EndUserSignType.CAdES_X_Long;
+        const cadesEnvelopedSig = await signer.signDataEx(data, cadesEnvelopedType);
+        signatures.cadesEnveloped = cadesEnvelopedSig.Sign;
+        
+        // 3-5. XAdES and PAdES - TODO: implement with correct API
+        // For now, only CAdES is supported (most widely used)
+        signatures.xadesDetached = null;
+        signatures.xadesEnveloped = null;
+        signatures.pades = null;
+        
+        // Store primary signature info from CAdES
+        state.lastSignature = cadesDetachedSig;
+      } finally {
+        state.smartIdPendingAction = null;
+      }
+      
+      const methodState = currentMethodState();
+      const signerSummary = summarizeLoadedSigner();
+      const API_KEY3 = window.__API_KEY__ || "";
+      
+      setResultStatus('<div class="status-line"><span class="dot warn"></span><span>Передаю підписи на сервер…</span></div>');
+      
+      const uploadResponse = await fetch(`/api/documents/${state.document.documentId}/signature`, {
+        method: "POST",
+        headers: API_KEY3 ? { "x-api-key": API_KEY3, "Content-Type": "application/json" } : { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          signatures: {
+            cadesDetached: signatures.cadesDetached,
+            cadesEnveloped: signatures.cadesEnveloped,
+            xadesDetached: signatures.xadesDetached,
+            xadesEnveloped: signatures.xadesEnveloped,
+            pades: signatures.pades
+          },
+          signatureInfo: state.lastSignature?.SignatureInfo,
+          signingMethod: state.signingMethod,
+          methodState,
+          keyMedia: state.signingMethod === SIGNING_METHOD.IIT_TOKEN ? redactKeyMediaForUpload(state.readedKey.keyMedia) : null,
+          session: {
+            signingMethod: state.signingMethod,
+            status: "signed",
+            methodState,
+            signer: signerSummary,
+            client: currentClientInfo()
+          },
+          client: currentClientInfo()
+        })
+      });
+      const uploadPayload = await uploadResponse.json();
+      if (!uploadResponse.ok) {
+        throw new Error(uploadPayload.error || "Не вдалося передати підпис на сервер.");
+      }
+      state.packageUrl = uploadPayload.downloadUrl;
+      els.downloadBtn.disabled = false;
+      updateSessionInfo();
+      setResultStatus(`
     <div class="status-line"><span class="dot ok"></span><strong>Документ підписано</strong></div>
     <div class="small" style="margin-top: 10px;">
       Метод: <span class="code">${escapeHtml(humanSigningMethod(state.signingMethod))}</span><br />
       Підписувач: <span class="code">${escapeHtml(state.lastSignature.SignatureInfo?.Signer || signerSummary.subjCN || "—")}</span><br />
       Час підпису: <span class="code">${escapeHtml(state.lastSignature.SignatureInfo?.DateTimeStr || "—")}</span><br />
-      Формати: <span class="code">${escapeHtml(formatStatus.join(', '))}</span><br />
       Підпис збережено на сервері, можна завантажити ZIP-пакет.
     </div>
   `);
-
-  log(`Підписи створено (${formatStatus.join(', ')}) та завантажено на сервер для документа ${state.document.fileName}.`);
-}
-
-
+      log(`Підпис створено та завантажено на сервер для документа ${state.document.fileName}.`);
+    }
     async function downloadPackage() {
       if (!state.packageUrl) {
         throw new Error("ZIP-пакет ще не готовий.");

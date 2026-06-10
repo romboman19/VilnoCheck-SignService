@@ -492,9 +492,31 @@ app.post('/api/documents/:documentId/signature', requireApiKey, async (req, res,
       session
     } = req.body || {};
 
-    // signatures should contain: cadesDetached, cadesEnveloped, xadesDetached, xadesEnveloped, pades (optional)
+    // signatures can be either:
+    // - object: { cadesDetached, cadesEnveloped, xadesDetached, xadesEnveloped, pades }
+    // - array: [{ format, type, data }, ...]
     if (!signatures || typeof signatures !== 'object') {
-      return res.status(400).json({ error: 'signatures object is required with cadesDetached, cadesEnveloped, xadesDetached, xadesEnveloped' });
+      return res.status(400).json({ error: 'signatures object or array is required' });
+    }
+
+    // Convert array format to object format
+    let sigObject = signatures;
+    if (Array.isArray(signatures)) {
+      sigObject = {};
+      for (const sig of signatures) {
+        if (sig.format === 'CAdES' && sig.type === 'detached') {
+          sigObject.cadesDetached = sig.data;
+        } else if (sig.format === 'CAdES' && sig.type === 'enveloped') {
+          sigObject.cadesEnveloped = sig.data;
+        } else if (sig.format === 'XAdES' && sig.type === 'detached') {
+          sigObject.xadesDetached = sig.data;
+        } else if (sig.format === 'XAdES' && sig.type === 'enveloped') {
+          sigObject.xadesEnveloped = sig.data;
+        } else if (sig.format === 'PAdES') {
+          sigObject.pades = sig.data;
+        }
+      }
+      signatures = sigObject;
     }
 
     const record = await loadRecord(documentId);
