@@ -10936,13 +10936,15 @@ async function signDocument() {
     // ========================================
     console.log('[Sign] Generating XAdES detached...');
     try {
-      // XAdESSign вимагає масив EndUserReference (створених через CreateReference)
-      const xadesRef = signer.CreateReference(originalFilename || "data", data);
-      const xadesDetachedSig = await signer.XAdESSign(
+      // XAdESSignData з параметром asBase64 = true
+      const dataBase64 = arrayBufferToBase64(data);
+      const xadesData = { name: originalFilename || "data.bin", val: dataBase64 };
+      const xadesDetachedSig = await signer.XAdESSignData(
         state.readedKey.getSignAlgo(),
-        EndUserConstants4.EndUserSignType.XAdES_BES,
-        [xadesRef],  // масив references
-        data
+        EndUserConstants4.EndUserXAdESType.Detached,
+        EndUserConstants4.EndUserXAdESSignLevel.B_LT,
+        xadesData,
+        true  // asBase64 = true
       );
       signatures.xadesDetached = xadesDetachedSig;
       signatureResults.push({
@@ -10964,12 +10966,14 @@ async function signDocument() {
     // Для PDF використовуємо Enveloping (обгортуючий) — підпис обгортає дані
     console.log('[Sign] Generating XAdES enveloping...');
     try {
-      const xadesRef = signer.CreateReference(originalFilename || "data", data);
-      const xadesEnvelopingSig = await signer.XAdESSign(
+      const dataBase64 = arrayBufferToBase64(data);
+      const xadesData = { name: originalFilename || "data.bin", val: dataBase64 };
+      const xadesEnvelopingSig = await signer.XAdESSignData(
         state.readedKey.getSignAlgo(),
-        EndUserConstants4.EndUserSignType.XAdES_BES,
-        [xadesRef],
-        data
+        EndUserConstants4.EndUserXAdESType.Enveloping,
+        EndUserConstants4.EndUserXAdESSignLevel.B_LT,
+        xadesData,
+        true  // asBase64 = true
       );
       signatures.xadesEnveloping = xadesEnvelopingSig;
       signatureResults.push({
