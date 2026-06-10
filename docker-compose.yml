@@ -1,0 +1,24 @@
+services:
+  sign-api:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: vilnocheck-sign-api
+    ports:
+      - "3010:3017"
+    volumes:
+      - ./storage:/app/storage
+      - ./logs:/app/logs
+    environment:
+      - PORT=3017
+      - HOST=0.0.0.0
+      - SIGN_STORAGE_DIR=/app/storage
+    env_file:
+      - .env
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:3017/api/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 5s

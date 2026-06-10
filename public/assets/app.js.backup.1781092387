@@ -10551,10 +10551,9 @@ ${els.log.textContent}`.trim();
     }
     async function syncSession(patch) {
       if (!state.document?.documentId) return null;
-      const API_KEY2 = window.__API_KEY__ || "";
       const response = await fetch(`/api/documents/${state.document.documentId}/session`, {
         method: "PATCH",
-        headers: API_KEY2 ? { "x-api-key": API_KEY2, "Content-Type": "application/json" } : { "Content-Type": "application/json" },
+        headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           ...patch,
           client: patch?.client || currentClientInfo()
@@ -10676,8 +10675,7 @@ ${els.log.textContent}`.trim();
       }
       const formData = new FormData();
       formData.append("document", file);
-      const API_KEY = window.__API_KEY__ || "";
-      const response = await fetch("/api/documents", { method: "POST", headers: API_KEY ? { "x-api-key": API_KEY } : {}, body: formData });
+      const response = await fetch("/api/documents", { method: "POST", body: formData });
       const payload = await response.json();
       if (!response.ok) {
         throw new Error(payload.error || "Не вдалося завантажити документ.");
@@ -10871,79 +10869,33 @@ ${els.log.textContent}`.trim();
         throw new Error("Спочатку зчитайте ключ обраним методом.");
       }
       const signer = state.signingMethod === SIGNING_METHOD.SMARTID ? (await ensureSmartIdReady()).signer : await getSigner();
+      const signType = new EndUserSignContainerInfo2();
+      signType.type = EndUserConstants4.EndUserSignContainerType.CAdES;
+      signType.subType = EndUserConstants4.EndUserCAdESType.Detached;
+      signType.signLevel = EndUserConstants4.EndUserSignType.CAdES_X_Long;
       const data = base64ToUint8Array(state.document.signingPayloadBase64);
-      
       if (state.signingMethod === SIGNING_METHOD.SMARTID) {
         state.smartIdPendingAction = "sign";
         state.smartIdConfirmEvent = null;
         refreshSmartIdUi();
         setResultStatus('<div class="status-line"><span class="dot warn"></span><span>Очікується підтвердження підпису в Privat24…</span></div>');
       }
-      
-      setResultStatus('<div class="status-line"><span class="dot warn"></span><span>Генерую підписи всіх форматів…</span></div>');
-      
-      let signatures = {};
+      let signature;
       try {
-        // 1. CAdES detached
-        const cadesDetachedType = new EndUserSignContainerInfo2();
-        cadesDetachedType.type = EndUserConstants4.EndUserSignContainerType.CAdES;
-        cadesDetachedType.subType = EndUserConstants4.EndUserCAdESType.Detached;
-        cadesDetachedType.signLevel = EndUserConstants4.EndUserSignType.CAdES_X_Long;
-        const cadesDetachedSig = await signer.signDataEx(data, cadesDetachedType);
-        signatures.cadesDetached = cadesDetachedSig.Sign;
-        
-        // 2. CAdES enveloped
-        const cadesEnvelopedType = new EndUserSignContainerInfo2();
-        cadesEnvelopedType.type = EndUserConstants4.EndUserSignContainerType.CAdES;
-        cadesEnvelopedType.subType = EndUserConstants4.EndUserCAdESType.Enveloped;
-        cadesEnvelopedType.signLevel = EndUserConstants4.EndUserSignType.CAdES_X_Long;
-        const cadesEnvelopedSig = await signer.signDataEx(data, cadesEnvelopedType);
-        signatures.cadesEnveloped = cadesEnvelopedSig.Sign;
-        
-        // 3. XAdES detached
-        const xadesDetachedSig = await signer.XAdESSign(data, false);
-        signatures.xadesDetached = xadesDetachedSig;
-        
-        // 4. XAdES enveloped
-        const xadesEnvelopedSig = await signer.XAdESSign(data, true);
-        signatures.xadesEnveloped = xadesEnvelopedSig;
-        
-        // 5. PAdES (only for PDF)
-        const isPdf = state.document.mimeType === 'application/pdf' || state.document.fileName.toLowerCase().endsWith('.pdf');
-        if (isPdf) {
-          try {
-            const padesSig = await signer.PDFSignData(data, 0, 0);
-            signatures.pades = padesSig;
-          } catch (padesErr) {
-            console.warn('PAdES signing failed:', padesErr);
-            signatures.pades = null;
-          }
-        }
-        
-        // Store primary signature info from CAdES
-        state.lastSignature = cadesDetachedSig;
+        signature = await signer.signDataEx(data, signType);
       } finally {
         state.smartIdPendingAction = null;
       }
-      
+      state.lastSignature = signature;
       const methodState = currentMethodState();
       const signerSummary = summarizeLoadedSigner();
-      const API_KEY3 = window.__API_KEY__ || "";
-      
-      setResultStatus('<div class="status-line"><span class="dot warn"></span><span>Передаю підписи на сервер…</span></div>');
-      
       const uploadResponse = await fetch(`/api/documents/${state.document.documentId}/signature`, {
         method: "POST",
-        headers: API_KEY3 ? { "x-api-key": API_KEY3, "Content-Type": "application/json" } : { "Content-Type": "application/json" },
+        headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          signatures: {
-            cadesDetached: signatures.cadesDetached,
-            cadesEnveloped: signatures.cadesEnveloped,
-            xadesDetached: signatures.xadesDetached,
-            xadesEnveloped: signatures.xadesEnveloped,
-            pades: signatures.pades
-          },
-          signatureInfo: state.lastSignature?.SignatureInfo,
+          signatureBase64: signature.Sign,
+          signatureFileName: `${state.document.fileName}.p7s`,
+          signatureInfo: signature.SignatureInfo,
           signingMethod: state.signingMethod,
           methodState,
           keyMedia: state.signingMethod === SIGNING_METHOD.IIT_TOKEN ? redactKeyMediaForUpload(state.readedKey.keyMedia) : null,
@@ -10979,7 +10931,7 @@ ${els.log.textContent}`.trim();
       if (!state.packageUrl) {
         throw new Error("ZIP-пакет ще не готовий.");
       }
-      const API_KEY_DL = window.__API_KEY__ || ""; const sep = state.packageUrl.includes("?") ? "&" : "?"; window.location.href = API_KEY_DL ? state.packageUrl + sep + "apiKey=" + API_KEY_DL : state.packageUrl;
+      window.location.href = state.packageUrl;
     }
     async function runAction(button, busyText, action) {
       setBusy(button, true, busyText);

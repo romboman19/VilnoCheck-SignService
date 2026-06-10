@@ -483,82 +483,39 @@ app.post('/api/documents/:documentId/signature', requireApiKey, async (req, res,
   try {
     const { documentId } = req.params;
     const {
-      signatures, // Object with base64 signatures for each format
+      signatureBase64,
       signatureInfo,
       keyMedia,
       client,
+      signatureFileName,
       signingMethod,
       methodState,
       session
     } = req.body || {};
 
-    // signatures should contain: cadesDetached, cadesEnveloped, xadesDetached, xadesEnveloped, pades (optional)
-    if (!signatures || typeof signatures !== 'object') {
-      return res.status(400).json({ error: 'signatures object is required with cadesDetached, cadesEnveloped, xadesDetached, xadesEnveloped' });
+    if (!signatureBase64 || typeof signatureBase64 !== 'string') {
+      return res.status(400).json({ error: 'signatureBase64 is required' });
     }
 
     const record = await loadRecord(documentId);
     const normalizedSigningMethod = normalizeSigningMethod(signingMethod || session?.signingMethod);
-    const baseName = path.parse(record.document.originalName).name;
+    const signatureBuffer = Buffer.from(signatureBase64, 'base64');
 
-    // Storage for all signature files
-    const sigFiles = {};
-    const sigDir = path.join(storageRoot, documentId);
-
-    // Save CAdES detached
-    if (signatures.cadesDetached) {
-      const buf = Buffer.from(signatures.cadesDetached, 'base64');
-      const fileName = `${baseName}.p7s`;
-      const filePath = path.join(sigDir, fileName);
-      await fsp.writeFile(filePath, buf);
-      sigFiles.cadesDetached = { fileName, path: filePath, size: buf.length, sha256: sha256(buf) };
-    }
-
-    // Save CAdES enveloped
-    if (signatures.cadesEnveloped) {
-      const buf = Buffer.from(signatures.cadesEnveloped, 'base64');
-      const fileName = `${baseName}.cades.p7s`;
-      const filePath = path.join(sigDir, fileName);
-      await fsp.writeFile(filePath, buf);
-      sigFiles.cadesEnveloped = { fileName, path: filePath, size: buf.length, sha256: sha256(buf) };
-    }
-
-    // Save XAdES detached
-    if (signatures.xadesDetached) {
-      const buf = Buffer.from(signatures.xadesDetached, 'base64');
-      const fileName = `${baseName}.xades.xml`;
-      const filePath = path.join(sigDir, fileName);
-      await fsp.writeFile(filePath, buf);
-      sigFiles.xadesDetached = { fileName, path: filePath, size: buf.length, sha256: sha256(buf) };
-    }
-
-    // Save XAdES enveloped
-    if (signatures.xadesEnveloped) {
-      const buf = Buffer.from(signatures.xadesEnveloped, 'base64');
-      const fileName = `${baseName}.xades-env.xml`;
-      const filePath = path.join(sigDir, fileName);
-      await fsp.writeFile(filePath, buf);
-      sigFiles.xadesEnveloped = { fileName, path: filePath, size: buf.length, sha256: sha256(buf) };
-    }
-
-    // Save PAdES (only for PDF)
-    if (signatures.pades && record.document.mimeType === 'application/pdf') {
-      const buf = Buffer.from(signatures.pades, 'base64');
-      const fileName = `${baseName}.pades.pdf`;
-      const filePath = path.join(sigDir, fileName);
-      await fsp.writeFile(filePath, buf);
-      sigFiles.pades = { fileName, path: filePath, size: buf.length, sha256: sha256(buf) };
-    }
-
-    // Verify at least one signature was provided
-    if (Object.keys(sigFiles).length === 0) {
-      return res.status(400).json({ error: 'at least one signature format required' });
-    }
-
-    // Use first signature for verification info
-    const firstSig = Object.values(sigFiles)[0];
+    // Verify detached signature before saving
     const documentBytes = await fsp.readFile(record.document.path);
-    const verifyResult = await verifyDetachedSignature(documentBytes, await fsp.readFile(firstSig.path));
+    const verifyResult = await verifyDetachedSignature(documentBytes, signatureBuffer);
+
+    if (!verifyResult.valid) {
+      return res.status(400).json({
+        error: 'Invalid signature',
+        details: verifyResult.error
+      });
+    }
+
+    const signatureName = safeFileName(signatureFileName || `${record.document.originalName}.p7s`, 'signature.p7s');
+    const signaturePath = path.join(storageRoot, documentId, signatureName);
+
+    await fsp.writeFile(signaturePath, signatureBuffer);
 
     record.session = mergeSession(record.session, {
       ...(session && typeof session === 'object' ? session : {}),
@@ -568,13 +525,12 @@ app.post('/api/documents/:documentId/signature', requireApiKey, async (req, res,
       client: client ?? session?.client
     });
 
-    record.signatures = sigFiles;
     record.signature = {
       uploadedAt: new Date().toISOString(),
-      fileName: firstSig.fileName,
-      size: firstSig.size,
-      sha256: firstSig.sha256,
-      path: firstSig.path,
+      fileName: signatureName,
+      size: signatureBuffer.length,
+      sha256: sha256(signatureBuffer),
+      path: signaturePath,
       signingMethod: normalizedSigningMethod,
       methodState: sanitizeSessionValue(methodState),
       signatureInfo: sanitizeSessionValue(signatureInfo || null),
@@ -595,8 +551,7 @@ app.post('/api/documents/:documentId/signature', requireApiKey, async (req, res,
       ok: true,
       documentId,
       downloadUrl: `/api/documents/${documentId}/package`,
-      packageFileName: `${baseName}.signed-package.zip`,
-      signatures: Object.keys(sigFiles)
+      packageFileName: `${path.parse(record.document.originalName).name}.signed-package.zip`
     });
   } catch (error) {
     if (error && error.code === 'ENOENT') {
@@ -611,11 +566,7 @@ app.get('/api/documents/:documentId/package', requireApiKey, async (req, res, ne
     const { documentId } = req.params;
     const record = await loadRecord(documentId);
 
-    // Support both old (record.signature) and new (record.signatures) structure
-    const hasSignatures = record.signatures && Object.keys(record.signatures).length > 0;
-    const hasLegacySignature = record.signature?.path;
-
-    if (!hasSignatures && !hasLegacySignature) {
+    if (!record.signature?.path) {
       return res.status(409).json({ error: 'signature has not been uploaded yet' });
     }
 
@@ -628,83 +579,10 @@ app.get('/api/documents/:documentId/package', requireApiKey, async (req, res, ne
     archive.on('error', next);
     archive.pipe(res);
 
-    const baseName = path.parse(record.document.originalName).name;
-
-    // Original document in original/ folder
-    archive.file(record.document.path, { name: `original/${record.document.originalName}` });
     archive.file(record.document.path, { name: record.document.originalName });
-
-    // CAdES folder
-    if (hasSignatures) {
-      if (record.signatures.cadesDetached) {
-        archive.file(record.signatures.cadesDetached.path, { name: `CAdES/${record.signatures.cadesDetached.fileName}` });
-      }
-      if (record.signatures.cadesEnveloped) {
-        archive.file(record.signatures.cadesEnveloped.path, { name: `CAdES/${record.signatures.cadesEnveloped.fileName}` });
-      }
-    } else if (hasLegacySignature) {
-      // Legacy: put in CAdES folder
-      archive.file(record.signature.path, { name: `CAdES/${record.signature.fileName}` });
-    }
-
-    // XAdES folder
-    if (hasSignatures) {
-      if (record.signatures.xadesDetached) {
-        archive.file(record.signatures.xadesDetached.path, { name: `XAdES/${record.signatures.xadesDetached.fileName}` });
-      }
-      if (record.signatures.xadesEnveloped) {
-        archive.file(record.signatures.xadesEnveloped.path, { name: `XAdES/${record.signatures.xadesEnveloped.fileName}` });
-      }
-    }
-
-    // PAdES folder
-    if (hasSignatures && record.signatures.pades) {
-      archive.file(record.signatures.pades.path, { name: `PAdES/${record.signatures.pades.fileName}` });
-    } else {
-      // Add README for non-PDF or missing PAdES
-      archive.append('PAdES format is only available for PDF documents.', { name: 'PAdES/README.txt' });
-    }
-
-    // Build manifest with all signatures
-    const signaturesManifest = hasSignatures ? {
-      cadesDetached: record.signatures.cadesDetached ? {
-        fileName: record.signatures.cadesDetached.fileName,
-        size: record.signatures.cadesDetached.size,
-        sha256: record.signatures.cadesDetached.sha256
-      } : null,
-      cadesEnveloped: record.signatures.cadesEnveloped ? {
-        fileName: record.signatures.cadesEnveloped.fileName,
-        size: record.signatures.cadesEnveloped.size,
-        sha256: record.signatures.cadesEnveloped.sha256
-      } : null,
-      xadesDetached: record.signatures.xadesDetached ? {
-        fileName: record.signatures.xadesDetached.fileName,
-        size: record.signatures.xadesDetached.size,
-        sha256: record.signatures.xadesDetached.sha256
-      } : null,
-      xadesEnveloped: record.signatures.xadesEnveloped ? {
-        fileName: record.signatures.xadesEnveloped.fileName,
-        size: record.signatures.xadesEnveloped.size,
-        sha256: record.signatures.xadesEnveloped.sha256
-      } : null,
-      pades: record.signatures.pades ? {
-        fileName: record.signatures.pades.fileName,
-        size: record.signatures.pades.size,
-        sha256: record.signatures.pades.sha256
-      } : null
-    } : {
-      // Legacy format
-      cadesDetached: {
-        fileName: record.signature.fileName,
-        size: record.signature.size,
-        sha256: record.signature.sha256
-      },
-      cadesEnveloped: null,
-      xadesDetached: null,
-      xadesEnveloped: null,
-      pades: null
-    };
-
+    archive.file(record.signature.path, { name: record.signature.fileName });
+    archive.file(record.document.path, { name: `original/${record.document.originalName}` });
+    archive.file(record.signature.path, { name: `signature/${record.signature.fileName}` });
     archive.append(JSON.stringify({
       generatedAt: new Date().toISOString(),
       service: 'sign-service',
@@ -717,18 +595,17 @@ app.get('/api/documents/:documentId/package', requireApiKey, async (req, res, ne
         sha256: record.document.sha256
       },
       session: record.session || null,
-      signatures: signaturesManifest,
       signature: {
-        fileName: record.signature?.fileName,
-        size: record.signature?.size,
-        sha256: record.signature?.sha256,
-        uploadedAt: record.signature?.uploadedAt,
-        signingMethod: record.signature?.signingMethod || null,
-        methodState: record.signature?.methodState || null,
-        signatureInfo: record.signature?.signatureInfo,
-        keyMedia: redactKeyMedia(record.signature?.keyMedia),
-        client: record.signature?.client,
-        verification: record.signature?.verification || null
+        fileName: record.signature.fileName,
+        size: record.signature.size,
+        sha256: record.signature.sha256,
+        uploadedAt: record.signature.uploadedAt,
+        signingMethod: record.signature.signingMethod || null,
+        methodState: record.signature.methodState || null,
+        signatureInfo: record.signature.signatureInfo,
+        keyMedia: redactKeyMedia(record.signature.keyMedia),
+        client: record.signature.client,
+        verification: record.signature.verification || null
       }
     }, null, 2), { name: 'manifest.json' });
 
