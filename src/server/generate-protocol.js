@@ -1,5 +1,4 @@
 const pdfMake = require('pdfmake/build/pdfmake');
-const pdfFonts = require('pdfmake/build/vfs_fonts');
 const fs = require('fs');
 const path = require('path');
 
@@ -7,17 +6,21 @@ const path = require('path');
 const robotoRegular = fs.readFileSync(path.join(__dirname, 'fonts', 'Roboto-Regular.ttf'));
 const robotoBold = fs.readFileSync(path.join(__dirname, 'fonts', 'Roboto-Bold.ttf'));
 
-// Створюємо власну віртуальну файлову систему з шрифтами
-const customFonts = {
-  Roboto: {
-    normal: robotoRegular.toString('base64'),
-    bold: robotoBold.toString('base64'),
-    italics: robotoRegular.toString('base64'),
-    bolditalics: robotoBold.toString('base64'),
-  }
+// Налаштовуємо VFS для pdfmake
+pdfMake.vfs = {
+  'Roboto-Regular.ttf': robotoRegular.toString('base64'),
+  'Roboto-Bold.ttf': robotoBold.toString('base64')
 };
 
-pdfMake.vfs = customFonts;
+// Реєструємо шрифт
+pdfMake.fonts = {
+  Roboto: {
+    normal: 'Roboto-Regular.ttf',
+    bold: 'Roboto-Bold.ttf',
+    italics: 'Roboto-Regular.ttf',
+    bolditalics: 'Roboto-Bold.ttf'
+  }
+};
 
 /**
  * Генерує PDF-протокол перевірки електронного підпису через pdfmake
@@ -272,10 +275,18 @@ async function generateSignatureProtocol(data) {
   };
 
   return new Promise((resolve, reject) => {
-    const pdfDocGenerator = pdfMake.createPdf(docDefinition);
-    pdfDocGenerator.getBuffer((buffer) => {
-      resolve(buffer);
-    });
+    try {
+      const pdfDocGenerator = pdfMake.createPdf(docDefinition);
+      pdfDocGenerator.getBuffer((buffer) => {
+        if (buffer) {
+          resolve(Buffer.from(buffer));
+        } else {
+          reject(new Error('PDF generation failed: no buffer'));
+        }
+      });
+    } catch (err) {
+      reject(err);
+    }
   });
 }
 
