@@ -1,149 +1,189 @@
-const PDFDocument = require('pdfkit');
-const path = require('path');
+const crypto = require('crypto');
 
 /**
- * Генерує PDF-протокол перевірки електронного підпису
+ * Генерує HTML-протокол перевірки електронного підпису
  * @param {Object} data - Дані для протоколу
- * @returns {Buffer} - PDF файл як Buffer
+ * @returns {string} - HTML рядок
  */
 function generateSignatureProtocol(data) {
-  return new Promise((resolve, reject) => {
-    const doc = new PDFDocument();
-    const chunks = [];
+  const {
+    generatedAt,
+    document,
+    signer,
+    signatures,
+    signingMethod,
+    verification
+  } = data;
 
-    doc.on('data', (chunk) => chunks.push(chunk));
-    doc.on('end', () => resolve(Buffer.concat(chunks)));
-    doc.on('error', reject);
-
-    // Використовуємо шрифт з підтримкою кирилиці
-    const fontPath = '/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf';
-    const fontBoldPath = '/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf';
-    
-    let fontRegular, fontBold;
-    try {
-      fontRegular = doc.registerFont('DejaVuSans', fontPath);
-      fontBold = doc.registerFont('DejaVuSans-Bold', fontBoldPath);
-    } catch (e) {
-      // Fallback на стандартний шрифт
-      fontRegular = 'Helvetica';
-      fontBold = 'Helvetica-Bold';
+  const dateStr = generatedAt 
+    ? new Date(generatedAt).toLocaleString('uk-UA') 
+    : new Date().toLocaleString('uk-UA');
+  
+  const isValid = verification?.result?.valid !== false;
+  
+  // Форматування підписів
+  let signaturesHtml = '';
+  if (signatures) {
+    if (signatures.cadesDetached) {
+      signaturesHtml += `
+        <div class="signature-item">
+          <strong>• CAdES Detached (відокремлений)</strong><br>
+          Файл: ${escapeHtml(signatures.cadesDetached.fileName || '-')}</br>
+          SHA256: <code>${escapeHtml(signatures.cadesDetached.sha256 || '-')}</code>
+        </div>
+      `;
     }
-
-    const {
-      generatedAt,
-      document,
-      signer,
-      signatures,
-      signingMethod,
-      verification
-    } = data;
-
-    // Заголовок - чорний текст
-    doc.font(fontBold).fontSize(24).text('PROTOL', 50, 50, { align: 'center' });
-    doc.font(fontRegular).fontSize(16).text('perevirky elektronnogo pidpysu', 50, 80, { align: 'center' });
-    
-    // Дата та статус
-    const dateStr = generatedAt ? new Date(generatedAt).toLocaleString('uk-UA') : new Date().toLocaleString('uk-UA');
-    doc.font(fontRegular).fontSize(12).text(`Data formuvannia: ${dateStr}`, 50, 120);
-    
-    doc.moveDown(2);
-
-    // Статус підпису - тільки чорний
-    const isValid = verification?.result?.valid !== false;
-    const statusText = isValid ? 'Pidpis validnyi' : 'Pidpis ne validnyi';
-    doc.font(fontBold).fontSize(14).text(statusText, 50, 150);
-
-    doc.moveDown(2);
-
-    // Інформація про документ
-    doc.font(fontBold).fontSize(14).text('1. INFORMACIJA PRO DOKUMENT', 50, doc.y);
-    doc.moveDown(0.5);
-    doc.font(fontRegular).fontSize(11);
-    
-    if (document) {
-      doc.text(`Nazva fajlu: ${document.fileName || '-'}`);
-      doc.text(`Typ: ${document.mimeType || '-'}`);
-      doc.text(`Rozmir: ${document.size ? (document.size / 1024).toFixed(2) + ' KB' : '-'}`);
-      doc.text(`SHA256: ${document.sha256 || '-'}`);
-    } else {
-      doc.text('Informacia pro dokument vidсutnia');
+    if (signatures.cadesEnveloped) {
+      signaturesHtml += `
+        <div class="signature-item">
+          <strong>• CAdES Enveloped (вбудований)</strong><br>
+          Файл: ${escapeHtml(signatures.cadesEnveloped.fileName || '-')}</br>
+          SHA256: <code>${escapeHtml(signatures.cadesEnveloped.sha256 || '-')}</code>
+        </div>
+      `;
     }
-
-    doc.moveDown(1);
-
-    // Інформація про підписувача
-    doc.font(fontBold).fontSize(14).text('2. INFORMACIJA PRO PIDPYSUVACHA', 50, doc.y);
-    doc.moveDown(0.5);
-    doc.font(fontRegular).fontSize(11);
-
-    if (signer) {
-      doc.text(`PIB: ${signer.subjCN || '-'}`);
-      doc.text(`Organizacia: ${signer.subjOrg || '-'}`);
-      doc.text(`EDRPOU: ${signer.EDRPOUCode || '-'}`);
-      doc.text(`DRFO: ${signer.DRFOCode || '-'}`);
-      doc.text(`Serijnyj nomer sertyfikata: ${signer.serial || '-'}`);
-      doc.text(`Vydavnyk: ${signer.issuerCN || '-'}`);
-    } else {
-      doc.text('Informacia pro pidpysuvacha vidсutnia');
+    if (signatures.pades) {
+      signaturesHtml += `
+        <div class="signature-item">
+          <strong>• PAdES (PDF-вбудований)</strong><br>
+          Файл: ${escapeHtml(signatures.pades.fileName || '-')}</br>
+          SHA256: <code>${escapeHtml(signatures.pades.sha256 || '-')}</code>
+        </div>
+      `;
     }
+  }
 
-    doc.moveDown(1);
-
-    // Інформація про методу підписання
-    doc.font(fontBold).fontSize(14).text('3. METOD PIDPYSANNIA', 50, doc.y);
-    doc.moveDown(0.5);
-    doc.font(fontRegular).fontSize(11);
-    doc.text(`Metod: ${signingMethod || '-'}`);
-    doc.text(`Servis: VilnoCheck Sign Service v${data.version || '0.2.0'}`);
-
-    doc.moveDown(1);
-
-    // Формати підписів
-    doc.font(fontBold).fontSize(14).text('4. ZGENEROVANI FORMATY PIDPYSU', 50, doc.y);
-    doc.moveDown(0.5);
-    doc.font(fontRegular).fontSize(11);
-
-    if (signatures) {
-      if (signatures.cadesDetached) {
-        doc.text('* CAdES Detached (vidokremlenyj)');
-        doc.text(`  Fajl: ${signatures.cadesDetached.fileName || '-'}`);
-        doc.text(`  SHA256: ${signatures.cadesDetached.sha256 || '-'}`);
-        doc.moveDown(0.3);
-      }
-      if (signatures.cadesEnveloped) {
-        doc.text('* CAdES Enveloped (vbudovanyj)');
-        doc.text(`  Fajl: ${signatures.cadesEnveloped.fileName || '-'}`);
-        doc.text(`  SHA256: ${signatures.cadesEnveloped.sha256 || '-'}`);
-        doc.moveDown(0.3);
-      }
-      if (signatures.pades) {
-        doc.text('* PAdES (PDF-vbudovanyj)');
-        doc.text(`  Fajl: ${signatures.pades.fileName || '-'}`);
-        doc.text(`  SHA256: ${signatures.pades.sha256 || '-'}`);
-      }
-    } else {
-      doc.text('Informacia pro formaty pidpysu vidсutnia');
+  const html = `<!DOCTYPE html>
+<html lang="uk">
+<head>
+  <meta charset="UTF-8">
+  <title>Протокол перевірки підпису</title>
+  <style>
+    body {
+      font-family: "Times New Roman", Times, serif;
+      font-size: 14px;
+      line-height: 1.6;
+      max-width: 800px;
+      margin: 40px auto;
+      padding: 20px;
+      color: #000;
     }
+    h1 {
+      text-align: center;
+      font-size: 24px;
+      margin-bottom: 0;
+    }
+    h2 {
+      text-align: center;
+      font-size: 16px;
+      font-weight: normal;
+      margin-top: 5px;
+    }
+    .status {
+      font-size: 16px;
+      font-weight: bold;
+      margin: 20px 0;
+      padding: 10px;
+      border: 1px solid #000;
+    }
+    .status.valid {
+      color: #000;
+    }
+    .status.invalid {
+      color: #000;
+    }
+    h3 {
+      font-size: 14px;
+      font-weight: bold;
+      margin-top: 20px;
+      margin-bottom: 10px;
+    }
+    .info-row {
+      margin: 5px 0;
+    }
+    .label {
+      display: inline-block;
+      width: 200px;
+    }
+    .signature-item {
+      margin: 10px 0;
+      padding: 10px;
+      border-left: 3px solid #000;
+    }
+    code {
+      font-family: "Courier New", monospace;
+      font-size: 11px;
+      word-break: break-all;
+    }
+    .footer {
+      margin-top: 40px;
+      padding-top: 20px;
+      border-top: 1px solid #ccc;
+      font-size: 10px;
+      text-align: center;
+      color: #333;
+    }
+    @media print {
+      body { margin: 0; }
+      .no-print { display: none; }
+    }
+  </style>
+</head>
+<body>
+  <h1>ПРОТОКОЛ</h1>
+  <h2>перевірки електронного підпису</h2>
+  
+  <div class="date">Дата формування: ${escapeHtml(dateStr)}</div>
+  
+  <div class="status ${isValid ? 'valid' : 'invalid'}">
+    ${isValid ? '✓ Підпис валідний' : '✗ Підпис не валідний'}
+  </div>
+  
+  <h3>1. ІНФОРМАЦІЯ ПРО ДОКУМЕНТ</h3>
+  <div class="info-row"><span class="label">Назва файлу:</span> ${escapeHtml(document?.fileName || '-')}</div>
+  <div class="info-row"><span class="label">Тип:</span> ${escapeHtml(document?.mimeType || '-')}</div>
+  <div class="info-row"><span class="label">Розмір:</span> ${document?.size ? (document.size / 1024).toFixed(2) + ' KB' : '-'}</div>
+  <div class="info-row"><span class="label">SHA256:</span> <code>${escapeHtml(document?.sha256 || '-')}</code></div>
+  
+  <h3>2. ІНФОРМАЦІЯ ПРО ПІДПИСУВАЧА</h3>
+  <div class="info-row"><span class="label">ПІБ:</span> ${escapeHtml(signer?.subjCN || '-')}</div>
+  <div class="info-row"><span class="label">Організація:</span> ${escapeHtml(signer?.subjOrg || '-')}</div>
+  <div class="info-row"><span class="label">ЄДРПОУ:</span> ${escapeHtml(signer?.EDRPOUCode || '-')}</div>
+  <div class="info-row"><span class="label">ДРФО:</span> ${escapeHtml(signer?.DRFOCode || '-')}</div>
+  <div class="info-row"><span class="label">Серійний номер сертифіката:</span> ${escapeHtml(signer?.serial || '-')}</div>
+  <div class="info-row"><span class="label">Видавець:</span> ${escapeHtml(signer?.issuerCN || '-')}</div>
+  
+  <h3>3. МЕТОД ПІДПИСАННЯ</h3>
+  <div class="info-row"><span class="label">Метод:</span> ${escapeHtml(signingMethod || '-')}</div>
+  <div class="info-row"><span class="label">Сервіс:</span> VilnoCheck Sign Service v${escapeHtml(data?.version || '0.2.0')}</div>
+  
+  <h3>4. ЗГЕНЕРОВАНІ ФОРМАТИ ПІДПИСУ</h3>
+  ${signaturesHtml || '<p>Інформація про формати підпису відсутня</p>'}
+  
+  <h3>5. ПРИМІТКИ</h3>
+  <p>
+    Цей протокол містить інформацію про електронний підпис, згенерований за допомогою сервісу VilnoCheck Sign Service.
+    Дані наведені відповідно до метаданих підпису та не є юридично значущим документом.
+    Для юридично значущої перевірки використовуйте акредитований центр сертифікації.
+  </p>
+  
+  <div class="footer">
+    Згенеровано VilnoCheck Sign Service • ${escapeHtml(dateStr)}
+  </div>
+</body>
+</html>`;
 
-    doc.moveDown(1);
+  return html;
+}
 
-    // Примітки
-    doc.font(fontBold).fontSize(14).text('5. PRYMITKY', 50, doc.y);
-    doc.moveDown(0.5);
-    doc.font(fontRegular).fontSize(10);
-    doc.text('Cej protocol mistyt informaciju pro elektronnyj pidpys, zgenerovanyj za dopomogoju servisu VilnoCheck Sign Service.');
-    doc.text('Dani navedeni vidpovidno do metadanych pidpysu ta ne e jurydychno znachushchym dokumentom.');
-    doc.text('Dlja jurydychno znachushchoi perevirky vykorystovujte akredytovanyj centr sertyfikacii.');
-
-    // Футер
-    const pageHeight = doc.page.height;
-    doc.font(fontRegular).fontSize(8).text(
-      `Zgenerovano VilnoCheck Sign Service • ${dateStr}`,
-      50, pageHeight - 50, { align: 'center', width: doc.page.width - 100 }
-    );
-
-    doc.end();
-  });
+function escapeHtml(text) {
+  if (!text) return '-';
+  return String(text)
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&#039;');
 }
 
 module.exports = { generateSignatureProtocol };
