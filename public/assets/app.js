@@ -10932,87 +10932,22 @@ async function signDocument() {
     console.log('[Sign] CAdES enveloped generated:', cadesEnvelopedSig.Sign?.substring(0, 50) + '...');
 
     // ========================================
-    // 3. XAdES detached
+    // 3. XAdES detached - NOT IMPLEMENTED
     // ========================================
-    console.log('[Sign] Generating XAdES detached...');
-    try {
-      // XAdES-BES detached: xadesType=0, signLevel=1 (B-B)
-      // references = [{ name: filename, data: fileBytes }]
-      const xadesDetachedSig = await signer.XAdESSignData(
-        0,  // xadesType: 0 = XAdES-BES
-        1,  // signLevel: 1 = B-B (detached)
-        [{ name: originalFilename, data: data }],
-        true // asBase64String = true
-      );
-      signatures.xadesDetached = xadesDetachedSig;
-      signatureResults.push({
-        format: 'XAdES',
-        type: 'detached',
-        data: xadesDetachedSig,
-        signer: cadesDetachedSig.SignatureInfo?.Signer
-      });
-      console.log('[Sign] XAdES detached generated:', xadesDetachedSig?.substring(0, 50) + '...');
-    } catch (xadesDetachedError) {
-      console.error('[Sign] XAdES detached failed:', xadesDetachedError);
-      signatures.xadesDetached = null;
-    }
+    console.log('[Sign] XAdES detached skipped (requires XAdESCreateEmptySign flow)');
+    signatures.xadesDetached = null;
 
     // ========================================
-    // 4. XAdES enveloped
+    // 4. XAdES enveloped - NOT IMPLEMENTED
     // ========================================
-    console.log('[Sign] Generating XAdES enveloped...');
-    try {
-      // XAdES-BES enveloped: signLevel=2 (B-T includes data)
-      const xadesEnvelopedSig = await signer.XAdESSignData(
-        0,  // xadesType: 0 = XAdES-BES
-        2,  // signLevel: 2 = B-T (enveloped with timestamp)
-        [{ name: originalFilename, data: data }],
-        true // asBase64String = true
-      );
-      signatures.xadesEnveloped = xadesEnvelopedSig;
-      signatureResults.push({
-        format: 'XAdES',
-        type: 'enveloped',
-        data: xadesEnvelopedSig,
-        signer: cadesDetachedSig.SignatureInfo?.Signer
-      });
-      console.log('[Sign] XAdES enveloped generated:', xadesEnvelopedSig?.substring(0, 50) + '...');
-    } catch (xadesEnvelopedError) {
-      console.error('[Sign] XAdES enveloped failed:', xadesEnvelopedError);
-      signatures.xadesEnveloped = null;
-    }
+    console.log('[Sign] XAdES enveloped skipped (requires XAdESCreateEmptySign flow)');
+    signatures.xadesEnveloped = null;
 
     // ========================================
-    // 5. PAdES (тільки для PDF)
+    // 5. PAdES (тільки для PDF) - NOT IMPLEMENTED
     // ========================================
-    if (isPdf) {
-      console.log('[Sign] Generating PAdES...');
-      try {
-        // PAdES-BES: signType=0
-        // asBase64String = false → Uint8Array, потім конвертуємо в base64
-        const padesUint8 = await signer.PDFSignData(
-          data,    // pdfData: Uint8Array
-          0,       // signType: 0 = PAdES-BES
-          false    // asBase64String: false → Uint8Array
-        );
-        // Конвертуємо Uint8Array в base64 для відправки на сервер
-        const padesBase64 = btoa(String.fromCharCode.apply(null, padesUint8));
-        signatures.pades = padesBase64;
-        signatureResults.push({
-          format: 'PAdES',
-          type: 'embedded',
-          data: padesBase64,
-          signer: cadesDetachedSig.SignatureInfo?.Signer
-        });
-        console.log('[Sign] PAdES generated:', padesBase64?.substring(0, 50) + '...');
-      } catch (padesError) {
-        console.error('[Sign] PAdES failed:', padesError);
-        signatures.pades = null;
-      }
-    } else {
-      console.log('[Sign] Skipping PAdES (not a PDF file)');
-      signatures.pades = null;
-    }
+    console.log('[Sign] PAdES skipped (requires PDFCreateEmptySign flow)');
+    signatures.pades = null;
 
     // Store primary signature info from CAdES
     state.lastSignature = cadesDetachedSig;
