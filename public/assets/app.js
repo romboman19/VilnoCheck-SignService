@@ -10936,21 +10936,20 @@ async function signDocument() {
     // ========================================
     console.log('[Sign] Generating XAdES detached...');
     try {
-      // XAdES потребує масив об'єктів {name, val}
-      const xadesData = { name: originalFilename || "data", val: data };
-      const xadesDetachedSig = await signer.XAdESSignData(
+      // XAdESSign вимагає масив EndUserReference (створених через CreateReference)
+      const xadesRef = signer.CreateReference(originalFilename || "data", data);
+      const xadesDetachedSig = await signer.XAdESSign(
         state.readedKey.getSignAlgo(),
-        EndUserConstants4.EndUserXAdESType.Detached,  // 1
-        EndUserConstants4.EndUserXAdESSignLevel.B_LT, // 16
-        xadesData,
-        false  // asBase64 = false, повертає рядок
+        EndUserConstants4.EndUserSignType.XAdES_BES,
+        [xadesRef],  // масив references
+        data
       );
       signatures.xadesDetached = xadesDetachedSig;
       signatureResults.push({
         format: 'XAdES',
         type: 'detached',
         data: xadesDetachedSig,
-        signer: null  // XAdESSignData повертає просто рядок
+        signer: null
       });
       console.log('[Sign] XAdES detached generated:', xadesDetachedSig?.substring(0, 50) + '...');
     } catch (e) {
@@ -10965,13 +10964,12 @@ async function signDocument() {
     // Для PDF використовуємо Enveloping (обгортуючий) — підпис обгортає дані
     console.log('[Sign] Generating XAdES enveloping...');
     try {
-      const xadesData = { name: originalFilename || "data", val: data };
-      const xadesEnvelopingSig = await signer.XAdESSignData(
+      const xadesRef = signer.CreateReference(originalFilename || "data", data);
+      const xadesEnvelopingSig = await signer.XAdESSign(
         state.readedKey.getSignAlgo(),
-        EndUserConstants4.EndUserXAdESType.Enveloping,  // 2 — підпис обгортає дані
-        EndUserConstants4.EndUserXAdESSignLevel.B_LT,   // 16
-        xadesData,
-        false
+        EndUserConstants4.EndUserSignType.XAdES_BES,
+        [xadesRef],
+        data
       );
       signatures.xadesEnveloping = xadesEnvelopingSig;
       signatureResults.push({
