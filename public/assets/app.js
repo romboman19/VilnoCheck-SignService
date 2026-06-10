@@ -10551,9 +10551,13 @@ ${els.log.textContent}`.trim();
     }
     async function syncSession(patch) {
       if (!state.document?.documentId) return null;
+      const API_KEY2 = window.__API_KEY__ || "";
       const response = await fetch(`/api/documents/${state.document.documentId}/session`, {
         method: "PATCH",
-        headers: { "Content-Type": "application/json" },
+        headers: {
+          "Content-Type": "application/json",
+          ...(API_KEY2 ? { "x-api-key": API_KEY2 } : {})
+        },
         body: JSON.stringify({
           ...patch,
           client: patch?.client || currentClientInfo()
@@ -10675,7 +10679,8 @@ ${els.log.textContent}`.trim();
       }
       const formData = new FormData();
       formData.append("document", file);
-      const response = await fetch("/api/documents", { method: "POST", body: formData });
+      const API_KEY = window.__API_KEY__ || "";
+      const response = await fetch("/api/documents", { method: "POST", headers: API_KEY ? { "x-api-key": API_KEY } : {}, body: formData });
       const payload = await response.json();
       if (!response.ok) {
         throw new Error(payload.error || "Не вдалося завантажити документ.");
@@ -10889,9 +10894,10 @@ ${els.log.textContent}`.trim();
       state.lastSignature = signature;
       const methodState = currentMethodState();
       const signerSummary = summarizeLoadedSigner();
+      const API_KEY3 = window.__API_KEY__ || "";
       const uploadResponse = await fetch(`/api/documents/${state.document.documentId}/signature`, {
+        headers: API_KEY3 ? { "x-api-key": API_KEY3, "Content-Type": "application/json" } : { "Content-Type": "application/json" },
         method: "POST",
-        headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           signatureBase64: signature.Sign,
           signatureFileName: `${state.document.fileName}.p7s`,
