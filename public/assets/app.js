@@ -10954,8 +10954,8 @@ ${els.log.textContent}`.trim();
     <div class="status-line"><span class="dot ok"></span><strong>Документ підписано</strong></div>
     <div class="small" style="margin-top: 10px;">
       Метод: <span class="code">${escapeHtml(humanSigningMethod(state.signingMethod))}</span><br />
-      Підписувач: <span class="code">${escapeHtml(signature.SignatureInfo?.Signer || signerSummary.subjCN || "—")}</span><br />
-      Час підпису: <span class="code">${escapeHtml(signature.SignatureInfo?.DateTimeStr || "—")}</span><br />
+      Підписувач: <span class="code">${escapeHtml(state.lastSignature.SignatureInfo?.Signer || signerSummary.subjCN || "—")}</span><br />
+      Час підпису: <span class="code">${escapeHtml(state.lastSignature.SignatureInfo?.DateTimeStr || "—")}</span><br />
       Підпис збережено на сервері, можна завантажити ZIP-пакет.
     </div>
   `);
