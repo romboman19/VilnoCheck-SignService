@@ -1,40 +1,24 @@
-const pdfMake = require('pdfmake/build/pdfmake');
+const PdfPrinter = require('pdfmake');
 const fs = require('fs');
 const path = require('path');
 
-let fontsInitialized = false;
-
-function initFonts() {
-  if (fontsInitialized) return;
-  
-  const robotoRegular = fs.readFileSync(path.join(__dirname, 'fonts', 'Roboto-Regular.ttf'));
-  const robotoBold = fs.readFileSync(path.join(__dirname, 'fonts', 'Roboto-Bold.ttf'));
-  
-  // Для pdfmake потрібно встановити vfs правильно
-  pdfMake.vfs = pdfMake.vfs || {};
-  pdfMake.vfs['Roboto-Regular.ttf'] = robotoRegular.toString('base64');
-  pdfMake.vfs['Roboto-Bold.ttf'] = robotoBold.toString('base64');
-  
-  pdfMake.fonts = {
-    Roboto: {
-      normal: 'Roboto-Regular.ttf',
-      bold: 'Roboto-Bold.ttf',
-      italics: 'Roboto-Regular.ttf',
-      bolditalics: 'Roboto-Bold.ttf'
-    }
-  };
-  
-  fontsInitialized = true;
-}
+// Завантажуємо шрифти
+const fonts = {
+  Roboto: {
+    normal: path.join(__dirname, 'fonts', 'Roboto-Regular.ttf'),
+    bold: path.join(__dirname, 'fonts', 'Roboto-Bold.ttf'),
+    italics: path.join(__dirname, 'fonts', 'Roboto-Regular.ttf'),
+    bolditalics: path.join(__dirname, 'fonts', 'Roboto-Bold.ttf')
+  }
+};
 
 /**
- * Генерує PDF-протокол перевірки електронного підпису через pdfmake
+ * Генерує PDF-протокол перевірки електронного підпису
  * @param {Object} data - Дані для протоколу
  * @returns {Promise<Buffer>} - PDF файл як Buffer
  */
 async function generateSignatureProtocol(data) {
-  // Ініціалізуємо шрифти перед генерацією
-  initFonts();
+  const printer = new PdfPrinter(fonts);
   
   const {
     generatedAt,
@@ -57,22 +41,22 @@ async function generateSignatureProtocol(data) {
   if (signatures) {
     if (signatures.cadesDetached) {
       signaturesContent.push(
-        { text: '• CAdES Detached (vidokremlenyj)', style: 'signatureItem' },
-        { text: `Fajl: ${signatures.cadesDetached.fileName || '-'}`, style: 'signatureDetail' },
+        { text: '• CAdES Detached (відокремлений)', style: 'signatureItem' },
+        { text: `Файл: ${signatures.cadesDetached.fileName || '-'}`, style: 'signatureDetail' },
         { text: `SHA256: ${signatures.cadesDetached.sha256 || '-'}`, style: 'signatureHash' }
       );
     }
     if (signatures.cadesEnveloped) {
       signaturesContent.push(
-        { text: '• CAdES Enveloped (vbydovanyj)', style: 'signatureItem' },
-        { text: `Fajl: ${signatures.cadesEnveloped.fileName || '-'}`, style: 'signatureDetail' },
+        { text: '• CAdES Enveloped (вбудований)', style: 'signatureItem' },
+        { text: `Файл: ${signatures.cadesEnveloped.fileName || '-'}`, style: 'signatureDetail' },
         { text: `SHA256: ${signatures.cadesEnveloped.sha256 || '-'}`, style: 'signatureHash' }
       );
     }
     if (signatures.pades) {
       signaturesContent.push(
-        { text: '• PAdES (PDF-vbydovanyj)', style: 'signatureItem' },
-        { text: `Fajl: ${signatures.pades.fileName || '-'}`, style: 'signatureDetail' },
+        { text: '• PAdES (PDF-вбудований)', style: 'signatureItem' },
+        { text: `Файл: ${signatures.pades.fileName || '-'}`, style: 'signatureDetail' },
         { text: `SHA256: ${signatures.pades.sha256 || '-'}`, style: 'signatureHash' }
       );
     }
@@ -80,32 +64,32 @@ async function generateSignatureProtocol(data) {
 
   const docDefinition = {
     content: [
-      { text: 'PROTOKOL', style: 'header' },
-      { text: 'perevirky elektronnogo pidpysu', style: 'subheader' },
-      { text: `Data formuvannia: ${dateStr}`, style: 'date' },
+      { text: 'ПРОТОКОЛ', style: 'header' },
+      { text: 'перевірки електронного підпису', style: 'subheader' },
+      { text: `Дата формування: ${dateStr}`, style: 'date' },
       { text: '' },
       {
-        text: isValid ? 'Pidpis VALIDNYJ' : 'Pidpis NE validnyj',
+        text: isValid ? '✓ Підпис валідний' : '✗ Підпис не валідний',
         style: isValid ? 'statusValid' : 'statusInvalid'
       },
       { text: '', margin: [0, 10] },
       
-      { text: '1. INFORMACIJA PRO DOKUMENT', style: 'sectionHeader' },
+      { text: '1. ІНФОРМАЦІЯ ПРО ДОКУМЕНТ', style: 'sectionHeader' },
       {
         columns: [
-          { width: 200, text: 'Nazva fajlu:', style: 'label' },
+          { width: 200, text: 'Назва файлу:', style: 'label' },
           { text: document?.fileName || '-', style: 'value' }
         ]
       },
       {
         columns: [
-          { width: 200, text: 'Typ MIME:', style: 'label' },
+          { width: 200, text: 'Тип MIME:', style: 'label' },
           { text: document?.mimeType || '-', style: 'value' }
         ]
       },
       {
         columns: [
-          { width: 200, text: 'Rozmir:', style: 'label' },
+          { width: 200, text: 'Розмір:', style: 'label' },
           { text: document?.size ? (document.size / 1024).toFixed(2) + ' KB' : '-', style: 'value' }
         ]
       },
@@ -117,73 +101,73 @@ async function generateSignatureProtocol(data) {
       },
       {
         columns: [
-          { width: 200, text: 'ID dokumentu:', style: 'label' },
+          { width: 200, text: 'ID документу:', style: 'label' },
           { text: documentId || '-', style: 'valueCode' }
         ]
       },
       { text: '', margin: [0, 10] },
       
-      { text: '2. INFORMACIJA PRO PIDPYSUVACHA', style: 'sectionHeader' },
+      { text: '2. ІНФОРМАЦІЯ ПРО ПІДПИСУВАЧА', style: 'sectionHeader' },
       {
         columns: [
-          { width: 200, text: 'PIB:', style: 'label' },
+          { width: 200, text: 'ПІБ:', style: 'label' },
           { text: signer?.subjCN || '-', style: 'value' }
         ]
       },
       {
         columns: [
-          { width: 200, text: 'Organizacija:', style: 'label' },
+          { width: 200, text: 'Організація:', style: 'label' },
           { text: signer?.subjOrg || '-', style: 'value' }
         ]
       },
       {
         columns: [
-          { width: 200, text: 'EDRPOU:', style: 'label' },
+          { width: 200, text: 'ЄДРПОУ:', style: 'label' },
           { text: signer?.EDRPOUCode || '-', style: 'value' }
         ]
       },
       {
         columns: [
-          { width: 200, text: 'DRFO:', style: 'label' },
+          { width: 200, text: 'ДРФО:', style: 'label' },
           { text: signer?.DRFOCode || '-', style: 'value' }
         ]
       },
       {
         columns: [
-          { width: 200, text: 'Serijnyj nomer sertyfikata:', style: 'label' },
+          { width: 200, text: 'Серійний номер сертифіката:', style: 'label' },
           { text: signer?.serial || '-', style: 'valueCode' }
         ]
       },
       {
         columns: [
-          { width: 200, text: 'CCK (Vydavnyk):', style: 'label' },
+          { width: 200, text: 'ЦСК (Видавець):', style: 'label' },
           { text: signer?.issuerCN || '-', style: 'value' }
         ]
       },
       { text: '', margin: [0, 10] },
       
-      { text: '3. METOD PIDPYSANNJA', style: 'sectionHeader' },
+      { text: '3. МЕТОД ПІДПИСАННЯ', style: 'sectionHeader' },
       {
         columns: [
-          { width: 200, text: 'Metod:', style: 'label' },
+          { width: 200, text: 'Метод:', style: 'label' },
           { text: signingMethod || '-', style: 'value' }
         ]
       },
       {
         columns: [
-          { width: 200, text: 'Servis:', style: 'label' },
+          { width: 200, text: 'Сервіс:', style: 'label' },
           { text: `VilnoCheck Sign Service v${data?.version || '0.2.0'}`, style: 'value' }
         ]
       },
       { text: '', margin: [0, 10] },
       
-      { text: '4. ZGENEROVANI FORMATY PIDPYSU', style: 'sectionHeader' },
+      { text: '4. ЗГЕНЕРОВАНІ ФОРМАТИ ПІДПИСУ', style: 'sectionHeader' },
       ...signaturesContent,
       { text: '', margin: [0, 10] },
       
-      { text: '5. PRYMITKY', style: 'sectionHeader' },
+      { text: '5. ПРИМІТКИ', style: 'sectionHeader' },
       {
-        text: 'Ceij protocol mistyt informaciju pro elektronnyj pidpys, zgenerovanyj za dopomohoju servisu VilnoCheck Sign Service. Dani navedeni vidpovidno do metadanych pidpysu ta ne e jurydychno znachushchym dokumentom. Dlja jurydychno znachushchoi perevirky vykorystovujte akredytovanyj centr sertyfikacii.',
+        text: 'Цей протокол містить інформацію про електронний підпис, згенерований за допомогою сервісу VilnoCheck Sign Service. Дані наведені відповідно до метаданих підпису та не є юридично значущим документом. Для юридично значущої перевірки використовуйте акредитований центр сертифікації.',
         style: 'note'
       }
     ],
@@ -272,7 +256,7 @@ async function generateSignatureProtocol(data) {
     
     footer: function(currentPage, pageCount) {
       return {
-        text: `Zgenerovano VilnoCheck Sign Service • ${dateStr}`,
+        text: `Згенеровано VilnoCheck Sign Service • ${dateStr}`,
         alignment: 'center',
         fontSize: 9,
         font: 'Roboto',
@@ -284,14 +268,14 @@ async function generateSignatureProtocol(data) {
 
   return new Promise((resolve, reject) => {
     try {
-      const pdfDocGenerator = pdfMake.createPdf(docDefinition);
-      pdfDocGenerator.getBuffer((buffer) => {
-        if (buffer) {
-          resolve(Buffer.from(buffer));
-        } else {
-          reject(new Error('PDF generation failed: no buffer'));
-        }
-      });
+      const pdfDoc = printer.createPdfKitDocument(docDefinition);
+      const chunks = [];
+      
+      pdfDoc.on('data', (chunk) => chunks.push(chunk));
+      pdfDoc.on('end', () => resolve(Buffer.concat(chunks)));
+      pdfDoc.on('error', reject);
+      
+      pdfDoc.end();
     } catch (err) {
       reject(err);
     }
