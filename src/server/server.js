@@ -540,24 +540,6 @@ app.post('/api/documents/:documentId/signature', requireApiKey, async (req, res,
       sigFiles.cadesEnveloped = { fileName, path: filePath, size: buf.length, sha256: sha256(buf) };
     }
 
-    // Save XAdES detached
-    if (signatures.xadesDetached) {
-      const buf = Buffer.from(signatures.xadesDetached, 'base64');
-      const fileName = `${baseName}.xades.xml`;
-      const filePath = path.join(sigDir, fileName);
-      await fsp.writeFile(filePath, buf);
-      sigFiles.xadesDetached = { fileName, path: filePath, size: buf.length, sha256: sha256(buf) };
-    }
-
-    // Save XAdES enveloped
-    if (signatures.xadesEnveloped) {
-      const buf = Buffer.from(signatures.xadesEnveloped, 'base64');
-      const fileName = `${baseName}.xades-env.xml`;
-      const filePath = path.join(sigDir, fileName);
-      await fsp.writeFile(filePath, buf);
-      sigFiles.xadesEnveloped = { fileName, path: filePath, size: buf.length, sha256: sha256(buf) };
-    }
-
     // Save PAdES (only for PDF)
     if (signatures.pades && record.document.mimeType === 'application/pdf') {
       const buf = Buffer.from(signatures.pades, 'base64');
