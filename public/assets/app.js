@@ -10932,22 +10932,102 @@ async function signDocument() {
     console.log('[Sign] CAdES enveloped generated:', cadesEnvelopedSig.Sign?.substring(0, 50) + '...');
 
     // ========================================
-    // 3. XAdES detached - NOT IMPLEMENTED
+    // 3. XAdES detached
     // ========================================
-    console.log('[Sign] XAdES detached skipped (requires XAdESCreateEmptySign flow)');
-    signatures.xadesDetached = null;
+    console.log('[Sign] Generating XAdES detached...');
+    try {
+      const cert = await signer.GetOwnCertificate();
+      const emptySign = await signer.XAdESCreateEmptySign(
+        EndUserConstants4.EndUserSignType.XAdES_BES, null, null, null
+      );
+      const signWithSigner = await signer.XAdESAddSigner(
+        emptySign,
+        EndUserConstants4.EndUserSignType.XAdES_BES,
+        null, cert, data,
+        EndUserConstants4.EndUserSignContainerType.XAdES_Detached
+      );
+      const savedSign = await signer.XAdESSaveSign(signWithSigner);
+      const xadesDetachedSig = await signer.XAdESGetSignString(savedSign);
+      signatures.xadesDetached = xadesDetachedSig;
+      signatureResults.push({
+        format: 'XAdES',
+        type: 'detached',
+        data: xadesDetachedSig,
+        signer: cadesDetachedSig.SignatureInfo?.Signer
+      });
+      console.log('[Sign] XAdES detached generated:', xadesDetachedSig?.substring(0, 50) + '...');
+    } catch (e) {
+      console.error('[Sign] XAdES detached failed:', e);
+      signatures.xadesDetached = null;
+    }
 
     // ========================================
-    // 4. XAdES enveloped - NOT IMPLEMENTED
+    // 4. XAdES enveloped
     // ========================================
-    console.log('[Sign] XAdES enveloped skipped (requires XAdESCreateEmptySign flow)');
-    signatures.xadesEnveloped = null;
+    console.log('[Sign] Generating XAdES enveloped...');
+    try {
+      const cert = await signer.GetOwnCertificate();
+      const emptySign = await signer.XAdESCreateEmptySign(
+        EndUserConstants4.EndUserSignType.XAdES_BES, null, null, null
+      );
+      const signWithSigner = await signer.XAdESAddSigner(
+        emptySign,
+        EndUserConstants4.EndUserSignType.XAdES_BES,
+        null, cert, data,
+        EndUserConstants4.EndUserSignContainerType.XAdES_Enveloped
+      );
+      const savedSign = await signer.XAdESSaveSign(signWithSigner);
+      const xadesEnvelopedSig = await signer.XAdESGetSignString(savedSign);
+      signatures.xadesEnveloped = xadesEnvelopedSig;
+      signatureResults.push({
+        format: 'XAdES',
+        type: 'enveloped',
+        data: xadesEnvelopedSig,
+        signer: cadesDetachedSig.SignatureInfo?.Signer
+      });
+      console.log('[Sign] XAdES enveloped generated:', xadesEnvelopedSig?.substring(0, 50) + '...');
+    } catch (e) {
+      console.error('[Sign] XAdES enveloped failed:', e);
+      signatures.xadesEnveloped = null;
+    }
 
     // ========================================
-    // 5. PAdES (тільки для PDF) - NOT IMPLEMENTED
+    // 5. PAdES (тільки для PDF)
     // ========================================
-    console.log('[Sign] PAdES skipped (requires PDFCreateEmptySign flow)');
-    signatures.pades = null;
+    if (isPdf) {
+      console.log('[Sign] Generating PAdES...');
+      try {
+        const cert = await signer.GetOwnCertificate();
+        const emptySign = await signer.PDFCreateEmptySign(
+          EndUserConstants4.EndUserSignType.PAdES_BES_LTA,
+          null, 1, [100, 100, 200, 150],
+          { reason: 'Документ підписано електронним підписом', location: 'Україна' },
+          null
+        );
+        const signWithSigner = await signer.PDFAddSigner(
+          emptySign,
+          EndUserConstants4.EndUserSignType.PAdES_BES_LTA,
+          null, cert, data,
+          EndUserConstants4.EndUserSignContainerType.PAdES_Embedded
+        );
+        const savedSign = await signer.PDFSaveSign(signWithSigner);
+        const padesSig = await signer.PDFGetSignString(savedSign);
+        signatures.pades = padesSig;
+        signatureResults.push({
+          format: 'PAdES',
+          type: 'embedded',
+          data: padesSig,
+          signer: cadesDetachedSig.SignatureInfo?.Signer
+        });
+        console.log('[Sign] PAdES generated:', padesSig?.substring(0, 50) + '...');
+      } catch (e) {
+        console.error('[Sign] PAdES failed:', e);
+        signatures.pades = null;
+      }
+    } else {
+      console.log('[Sign] Skipping PAdES (not a PDF file)');
+      signatures.pades = null;
+    }
 
     // Store primary signature info from CAdES
     state.lastSignature = cadesDetachedSig;
