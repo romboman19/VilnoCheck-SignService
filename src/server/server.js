@@ -11,6 +11,7 @@ const { buildSmartIdProviderConfig, probeSmartIdProvider, probe, initSession, ge
 const { setupSecurity, generalLimiter, documentLimiter, pkiLimiter, requireApiKey } = require('./middleware/security');
 const { cleanupExpiredDocuments } = require('./cleanup');
 const { verifyDetachedSignature } = require('./verify');
+const { generateSignatureProtocol } = require('./generate-protocol');
 
 const app = express();
 const port = Number(process.env.PORT || 3017);
@@ -707,6 +708,23 @@ app.get('/api/documents/:documentId/package', requireApiKey, async (req, res, ne
         verification: record.signature?.verification || null
       }
     }, null, 2), { name: 'manifest.json' });
+
+    // Generate and add PDF protocol
+    try {
+      const protocolData = {
+        generatedAt: new Date().toISOString(),
+        version: serviceVersion,
+        document: record.document,
+        signer: record.signature?.signatureInfo?.OwnerInfo || record.session?.signer || null,
+        signatures: signaturesManifest,
+        signingMethod: record.signature?.signingMethod || record.session?.signingMethod,
+        verification: record.signature?.verification || null
+      };
+      const protocolPdf = await generateSignatureProtocol(protocolData);
+      archive.append(protocolPdf, { name: 'protocol.pdf' });
+    } catch (err) {
+      console.error('[protocol] Failed to generate PDF protocol:', err.message);
+    }
 
     await archive.finalize();
   } catch (error) {
