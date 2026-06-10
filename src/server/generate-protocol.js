@@ -1,4 +1,5 @@
 const { PDFDocument, rgb } = require('pdf-lib');
+const fontkit = require('@pdf-lib/fontkit');
 const fs = require('fs');
 const path = require('path');
 
@@ -10,6 +11,10 @@ const path = require('path');
  */
 async function generateSignatureProtocol(data) {
   const pdfDoc = await PDFDocument.create();
+  
+  // Реєструємо fontkit для підтримки кастомних шрифтів
+  pdfDoc.registerFontkit(fontkit);
+  
   const page = pdfDoc.addPage([595.28, 841.89]); // A4
   const { width, height } = page.getSize();
 
