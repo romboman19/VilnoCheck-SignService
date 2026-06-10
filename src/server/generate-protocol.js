@@ -1,28 +1,30 @@
-const { PDFDocument, rgb, StandardFonts } = require('pdf-lib');
+const pdfMake = require('pdfmake/build/pdfmake');
+const pdfFonts = require('pdfmake/build/vfs_fonts');
 const fs = require('fs');
 const path = require('path');
 
+// Завантажуємо Roboto шрифт з підтримкою кирилиці
+const robotoRegular = fs.readFileSync(path.join(__dirname, 'fonts', 'Roboto-Regular.ttf'));
+const robotoBold = fs.readFileSync(path.join(__dirname, 'fonts', 'Roboto-Bold.ttf'));
+
+// Створюємо власну віртуальну файлову систему з шрифтами
+const customFonts = {
+  Roboto: {
+    normal: robotoRegular.toString('base64'),
+    bold: robotoBold.toString('base64'),
+    italics: robotoRegular.toString('base64'),
+    bolditalics: robotoBold.toString('base64'),
+  }
+};
+
+pdfMake.vfs = customFonts;
+
 /**
- * Генерує PDF-протокол перевірки електронного підпису через pdf-lib
+ * Генерує PDF-протокол перевірки електронного підпису через pdfmake
  * @param {Object} data - Дані для протоколу
  * @returns {Promise<Buffer>} - PDF файл як Buffer
  */
 async function generateSignatureProtocol(data) {
-  const pdfDoc = await PDFDocument.create();
-  const page = pdfDoc.addPage([595.28, 841.89]); // A4
-  const { width, height } = page.getSize();
-
-  // Завантажуємо шрифт Roboto з підтримкою кирилиці
-  const fontPath = path.join(__dirname, 'fonts', 'Roboto-Regular.ttf');
-  let font;
-  try {
-    const fontBytes = fs.readFileSync(fontPath);
-    font = await pdfDoc.embedFont(fontBytes);
-  } catch (e) {
-    // Fallback на стандартний шрифт якщо Roboto не знайдено
-    font = await pdfDoc.embedFont(StandardFonts.Helvetica);
-  }
-
   const {
     generatedAt,
     document,
@@ -37,159 +39,244 @@ async function generateSignatureProtocol(data) {
     ? new Date(generatedAt).toLocaleString('uk-UA') 
     : new Date().toLocaleString('uk-UA');
 
-  let y = height - 50;
-  const lineHeight = 18;
-  const leftMargin = 50;
-  const rightMargin = width - 50;
-
-  // Допоміжна функція для друку тексту
-  const drawText = (text, x, yPos, size = 11, options = {}) => {
-    page.drawText(text || '-', {
-      x,
-      y: yPos,
-      size,
-      font,
-      color: rgb(0, 0, 0),
-      ...options
-    });
-  };
-
-  // Допоміжна функція для друку лінії
-  const drawLine = (label, value, yPos) => {
-    drawText(label + ':', leftMargin, yPos, 11, { font });
-    drawText(String(value || '-'), leftMargin + 200, yPos, 11, { font });
-  };
-
-  // Заголовок
-  drawText('ПРОТОКОЛ', leftMargin, y, 24, { font });
-  y -= 25;
-  drawText('перевірки електронного підпису', leftMargin, y, 14, { font });
-  y -= lineHeight * 2;
-
-  // Дата
-  drawText(`Дата формування: ${dateStr}`, leftMargin, y, 11, { font });
-  y -= lineHeight * 2;
-
-  // Статус
   const isValid = verification?.result?.valid !== false;
-  drawText(isValid ? '✓ Підпис валідний' : '✗ Підпис не валідний', 
-    leftMargin, y, 14, { font });
-  y -= lineHeight * 2;
 
-  // Розділ 1: Інформація про документ
-  drawText('1. ІНФОРМАЦІЯ ПРО ДОКУМЕНТ', leftMargin, y, 13, { font });
-  y -= lineHeight;
-  
-  drawLine('Назва файлу', document?.fileName, y);
-  y -= lineHeight;
-  drawLine('Тип MIME', document?.mimeType, y);
-  y -= lineHeight;
-  drawLine('Розмір', document?.size ? (document.size / 1024).toFixed(2) + ' KB' : '-', y);
-  y -= lineHeight;
-  drawLine('SHA256', document?.sha256, y);
-  y -= lineHeight;
-  drawLine('ID документу', documentId, y);
-  y -= lineHeight * 1.5;
-
-  // Розділ 2: Інформація про підписувача
-  drawText('2. ІНФОРМАЦІЯ ПРО ПІДПИСУВАЧА', leftMargin, y, 13, { font });
-  y -= lineHeight;
-  
-  drawLine('ПІБ', signer?.subjCN, y);
-  y -= lineHeight;
-  drawLine('Організація', signer?.subjOrg, y);
-  y -= lineHeight;
-  drawLine('ЄДРПОУ', signer?.EDRPOUCode, y);
-  y -= lineHeight;
-  drawLine('ДРФО', signer?.DRFOCode, y);
-  y -= lineHeight;
-  drawLine('Серійний номер сертифіката', signer?.serial, y);
-  y -= lineHeight;
-  drawLine('ЦСК (Видавець)', signer?.issuerCN, y);
-  y -= lineHeight * 1.5;
-
-  // Розділ 3: Метод підписання
-  drawText('3. МЕТОД ПІДПИСАННЯ', leftMargin, y, 13, { font });
-  y -= lineHeight;
-  
-  drawLine('Метод', signingMethod, y);
-  y -= lineHeight;
-  drawLine('Сервіс', `VilnoCheck Sign Service v${data?.version || '0.2.0'}`, y);
-  y -= lineHeight * 1.5;
-
-  // Розділ 4: Формати підпису
-  drawText('4. ЗГЕНЕРОВАНІ ФОРМАТИ ПІДПИСУ', leftMargin, y, 13, { font });
-  y -= lineHeight;
-
+  // Формуємо контент підписів
+  const signaturesContent = [];
   if (signatures) {
     if (signatures.cadesDetached) {
-      drawText('• CAdES Detached (відокремлений)', leftMargin + 10, y, 11, { font });
-      y -= lineHeight;
-      drawText(`  Файл: ${signatures.cadesDetached.fileName || '-'}`, leftMargin + 20, y, 10, { font });
-      y -= lineHeight;
-      drawText(`  SHA256: ${signatures.cadesDetached.sha256 || '-'}`, leftMargin + 20, y, 9, { font });
-      y -= lineHeight;
+      signaturesContent.push(
+        { text: '• CAdES Detached (відокремлений)', style: 'signatureItem' },
+        { text: `Файл: ${signatures.cadesDetached.fileName || '-'}`, style: 'signatureDetail' },
+        { text: `SHA256: ${signatures.cadesDetached.sha256 || '-'}`, style: 'signatureHash' }
+      );
     }
     if (signatures.cadesEnveloped) {
-      drawText('• CAdES Enveloped (вбудований)', leftMargin + 10, y, 11, { font });
-      y -= lineHeight;
-      drawText(`  Файл: ${signatures.cadesEnveloped.fileName || '-'}`, leftMargin + 20, y, 10, { font });
-      y -= lineHeight;
-      drawText(`  SHA256: ${signatures.cadesEnveloped.sha256 || '-'}`, leftMargin + 20, y, 9, { font });
-      y -= lineHeight;
+      signaturesContent.push(
+        { text: '• CAdES Enveloped (вбудований)', style: 'signatureItem' },
+        { text: `Файл: ${signatures.cadesEnveloped.fileName || '-'}`, style: 'signatureDetail' },
+        { text: `SHA256: ${signatures.cadesEnveloped.sha256 || '-'}`, style: 'signatureHash' }
+      );
     }
     if (signatures.pades) {
-      drawText('• PAdES (PDF-вбудований)', leftMargin + 10, y, 11, { font });
-      y -= lineHeight;
-      drawText(`  Файл: ${signatures.pades.fileName || '-'}`, leftMargin + 20, y, 10, { font });
-      y -= lineHeight;
-      drawText(`  SHA256: ${signatures.pades.sha256 || '-'}`, leftMargin + 20, y, 9, { font });
-      y -= lineHeight;
-    }
-  } else {
-    drawText('Інформація про формати підпису відсутня', leftMargin + 10, y, 11, { font });
-    y -= lineHeight;
-  }
-
-  y -= lineHeight;
-
-  // Розділ 5: Примітки
-  drawText('5. ПРИМІТКИ', leftMargin, y, 13, { font });
-  y -= lineHeight;
-  
-  const noteText = 'Цей протокол містить інформацію про електронний підпис, згенерований за допомогою ' +
-    'сервісу VilnoCheck Sign Service. Дані наведені відповідно до метаданих підпису та не є ' +
-    'юридично значущим документом. Для юридично значущої перевірки використовуйте акредитований центр сертифікації.';
-  
-  // Розбиваємо текст на рядки
-  const words = noteText.split(' ');
-  let line = '';
-  const maxWidth = width - leftMargin * 2;
-  
-  for (const word of words) {
-    const testLine = line + word + ' ';
-    const textWidth = font.widthOfTextAtSize(testLine, 10);
-    if (textWidth > maxWidth && line !== '') {
-      drawText(line, leftMargin, y, 10, { font });
-      y -= 14;
-      line = word + ' ';
-    } else {
-      line = testLine;
+      signaturesContent.push(
+        { text: '• PAdES (PDF-вбудований)', style: 'signatureItem' },
+        { text: `Файл: ${signatures.pades.fileName || '-'}`, style: 'signatureDetail' },
+        { text: `SHA256: ${signatures.pades.sha256 || '-'}`, style: 'signatureHash' }
+      );
     }
   }
-  if (line) {
-    drawText(line, leftMargin, y, 10, { font });
-    y -= 14;
-  }
 
-  y -= lineHeight;
+  const docDefinition = {
+    content: [
+      { text: 'ПРОТОКОЛ', style: 'header' },
+      { text: 'перевірки електронного підпису', style: 'subheader' },
+      { text: `Дата формування: ${dateStr}`, style: 'date' },
+      { text: '' },
+      {
+        text: isValid ? '✓ Підпис валідний' : '✗ Підпис не валідний',
+        style: isValid ? 'statusValid' : 'statusInvalid'
+      },
+      { text: '', margin: [0, 10] },
+      
+      { text: '1. ІНФОРМАЦІЯ ПРО ДОКУМЕНТ', style: 'sectionHeader' },
+      {
+        columns: [
+          { width: 200, text: 'Назва файлу:', style: 'label' },
+          { text: document?.fileName || '-', style: 'value' }
+        ]
+      },
+      {
+        columns: [
+          { width: 200, text: 'Тип MIME:', style: 'label' },
+          { text: document?.mimeType || '-', style: 'value' }
+        ]
+      },
+      {
+        columns: [
+          { width: 200, text: 'Розмір:', style: 'label' },
+          { text: document?.size ? (document.size / 1024).toFixed(2) + ' KB' : '-', style: 'value' }
+        ]
+      },
+      {
+        columns: [
+          { width: 200, text: 'SHA256:', style: 'label' },
+          { text: document?.sha256 || '-', style: 'valueCode' }
+        ]
+      },
+      {
+        columns: [
+          { width: 200, text: 'ID документу:', style: 'label' },
+          { text: documentId || '-', style: 'valueCode' }
+        ]
+      },
+      { text: '', margin: [0, 10] },
+      
+      { text: '2. ІНФОРМАЦІЯ ПРО ПІДПИСУВАЧА', style: 'sectionHeader' },
+      {
+        columns: [
+          { width: 200, text: 'ПІБ:', style: 'label' },
+          { text: signer?.subjCN || '-', style: 'value' }
+        ]
+      },
+      {
+        columns: [
+          { width: 200, text: 'Організація:', style: 'label' },
+          { text: signer?.subjOrg || '-', style: 'value' }
+        ]
+      },
+      {
+        columns: [
+          { width: 200, text: 'ЄДРПОУ:', style: 'label' },
+          { text: signer?.EDRPOUCode || '-', style: 'value' }
+        ]
+      },
+      {
+        columns: [
+          { width: 200, text: 'ДРФО:', style: 'label' },
+          { text: signer?.DRFOCode || '-', style: 'value' }
+        ]
+      },
+      {
+        columns: [
+          { width: 200, text: 'Серійний номер сертифіката:', style: 'label' },
+          { text: signer?.serial || '-', style: 'valueCode' }
+        ]
+      },
+      {
+        columns: [
+          { width: 200, text: 'ЦСК (Видавець):', style: 'label' },
+          { text: signer?.issuerCN || '-', style: 'value' }
+        ]
+      },
+      { text: '', margin: [0, 10] },
+      
+      { text: '3. МЕТОД ПІДПИСАННЯ', style: 'sectionHeader' },
+      {
+        columns: [
+          { width: 200, text: 'Метод:', style: 'label' },
+          { text: signingMethod || '-', style: 'value' }
+        ]
+      },
+      {
+        columns: [
+          { width: 200, text: 'Сервіс:', style: 'label' },
+          { text: `VilnoCheck Sign Service v${data?.version || '0.2.0'}`, style: 'value' }
+        ]
+      },
+      { text: '', margin: [0, 10] },
+      
+      { text: '4. ЗГЕНЕРОВАНІ ФОРМАТИ ПІДПИСУ', style: 'sectionHeader' },
+      ...signaturesContent,
+      { text: '', margin: [0, 10] },
+      
+      { text: '5. ПРИМІТКИ', style: 'sectionHeader' },
+      {
+        text: 'Цей протокол містить інформацію про електронний підпис, згенерований за допомогою сервісу VilnoCheck Sign Service. Дані наведені відповідно до метаданих підпису та не є юридично значущим документом. Для юридично значущої перевірки використовуйте акредитований центр сертифікації.',
+        style: 'note'
+      }
+    ],
+    
+    styles: {
+      header: {
+        font: 'Roboto',
+        fontSize: 24,
+        bold: true,
+        alignment: 'center',
+        margin: [0, 0, 0, 5]
+      },
+      subheader: {
+        font: 'Roboto',
+        fontSize: 14,
+        alignment: 'center',
+        margin: [0, 0, 0, 20]
+      },
+      date: {
+        font: 'Roboto',
+        fontSize: 11,
+        margin: [0, 0, 0, 10]
+      },
+      statusValid: {
+        font: 'Roboto',
+        fontSize: 14,
+        bold: true,
+        color: 'green',
+        margin: [0, 10]
+      },
+      statusInvalid: {
+        font: 'Roboto',
+        fontSize: 14,
+        bold: true,
+        color: 'red',
+        margin: [0, 10]
+      },
+      sectionHeader: {
+        font: 'Roboto',
+        fontSize: 13,
+        bold: true,
+        margin: [0, 10, 0, 5]
+      },
+      label: {
+        font: 'Roboto',
+        fontSize: 11,
+        bold: true
+      },
+      value: {
+        font: 'Roboto',
+        fontSize: 11
+      },
+      valueCode: {
+        font: 'Roboto',
+        fontSize: 9,
+        color: '#333'
+      },
+      signatureItem: {
+        font: 'Roboto',
+        fontSize: 11,
+        bold: true,
+        margin: [10, 5, 0, 0]
+      },
+      signatureDetail: {
+        font: 'Roboto',
+        fontSize: 10,
+        margin: [20, 2, 0, 0]
+      },
+      signatureHash: {
+        font: 'Roboto',
+        fontSize: 8,
+        color: '#666',
+        margin: [20, 2, 0, 5]
+      },
+      note: {
+        font: 'Roboto',
+        fontSize: 10,
+        italics: true,
+        color: '#555'
+      }
+    },
+    
+    defaultStyle: {
+      font: 'Roboto'
+    },
+    
+    footer: function(currentPage, pageCount) {
+      return {
+        text: `Згенеровано VilnoCheck Sign Service • ${dateStr}`,
+        alignment: 'center',
+        fontSize: 9,
+        font: 'Roboto',
+        color: '#666',
+        margin: [0, 10]
+      };
+    }
+  };
 
-  // Футер
-  drawText(`Згенеровано VilnoCheck Sign Service • ${dateStr}`, 
-    leftMargin, 30, 9, { font });
-
-  const pdfBytes = await pdfDoc.save();
-  return Buffer.from(pdfBytes);
+  return new Promise((resolve, reject) => {
+    const pdfDocGenerator = pdfMake.createPdf(docDefinition);
+    pdfDocGenerator.getBuffer((buffer) => {
+      resolve(buffer);
+    });
+  });
 }
 
 module.exports = { generateSignatureProtocol };
