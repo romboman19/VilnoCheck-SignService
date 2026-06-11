@@ -320,6 +320,7 @@ function createSmartIdKspSettings(provider = {}) {
     codeEDRPOU: provider.codeEDRPOU || '14360570'
   };
 }
+function createKspList() {  const { KSPSettings } = Models;  const depositsign = new KSPSettings();  depositsign.id = "depositsign";  depositsign.name = "DepositSign";  depositsign.ksp = EndUserConstants.EU_KSP_PB;  depositsign.address = "https://depositsign.com/api/v1/it-enterprise/sign-server";  depositsign.directAccess = true;  depositsign.needQRCode = false;  depositsign.clientIdPrefix = "";  const diia = new KSPSettings();  diia.id = "diia-sign";  diia.name = "Дія.Підпис";  diia.ksp = EndUserConstants.EU_KSP_DIIA;  diia.address = "https://diia-sign.it.ua/KSPSign";  diia.directAccess = false;  diia.needQRCode = true;  diia.systemId = "diia-sign-it-ent";  diia.signAlgos = [1];  const smartId = new KSPSettings();  smartId.id = "pb-smartid";  smartId.name = "ПриватБанк SmartID";  smartId.ksp = EndUserConstants.EU_KSP_PB;  smartId.address = "https://acsk.privatbank.ua/cloud/api/back/";  smartId.directAccess = true;  smartId.needQRCode = true;  smartId.clientIdPrefix = "IEIS_";  smartId.confirmationURL = "https://www.privat24.ua/rd/kep";  const vchasno = new KSPSettings();  vchasno.id = "vchasno";  vchasno.name = "Вчасно";  vchasno.ksp = EndUserConstants.EU_KSP_PB;  vchasno.address = "https://cs.vchasno.ua/ss/";  vchasno.directAccess = false;  vchasno.needQRCode = false;  vchasno.clientIdPrefix = "";  return [depositsign, diia, smartId, vchasno];}
 
 function makeSmartIdStatusHtml(provider) {
   if (!provider) {
@@ -500,7 +501,7 @@ function createSigner() {
         ApplyProxySettings: true,
         UseProxy: true,
         WebClientFileSize: 50,
-        KSPs: [smartIdKsp]
+        KSPs: createKspList()
       };
     },
     getSettings() {

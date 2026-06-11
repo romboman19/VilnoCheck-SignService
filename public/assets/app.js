@@ -10341,6 +10341,44 @@ ${els.log.textContent}`.trim();
         codeEDRPOU: provider.codeEDRPOU || "14360570"
       };
     }
+    function createKspList() {
+      const { KSPSettings: KSPSettings3 } = Models_exports;
+      const depositsign = new KSPSettings3();
+      depositsign.id = "depositsign";
+      depositsign.name = "DepositSign";
+      depositsign.ksp = EndUserConstants4.EU_KSP_PB;
+      depositsign.address = "https://depositsign.com/api/v1/it-enterprise/sign-server";
+      depositsign.directAccess = true;
+      depositsign.needQRCode = false;
+      depositsign.clientIdPrefix = "";
+      const diia = new KSPSettings3();
+      diia.id = "diia-sign";
+      diia.name = "Дія.Підпис";
+      diia.ksp = EndUserConstants4.EU_KSP_DIIA;
+      diia.address = "https://diia-sign.it.ua/KSPSign";
+      diia.directAccess = false;
+      diia.needQRCode = true;
+      diia.systemId = "diia-sign-it-ent";
+      diia.signAlgos = [1];
+      const smartId = new KSPSettings3();
+      smartId.id = "pb-smartid";
+      smartId.name = "ПриватБанк SmartID";
+      smartId.ksp = EndUserConstants4.EU_KSP_PB;
+      smartId.address = "https://acsk.privatbank.ua/cloud/api/back/";
+      smartId.directAccess = true;
+      smartId.needQRCode = true;
+      smartId.clientIdPrefix = "IEIS_";
+      smartId.confirmationURL = "https://www.privat24.ua/rd/kep";
+      const vchasno = new KSPSettings3();
+      vchasno.id = "vchasno";
+      vchasno.name = "Вчасно";
+      vchasno.ksp = EndUserConstants4.EU_KSP_PB;
+      vchasno.address = "https://cs.vchasno.ua/ss/";
+      vchasno.directAccess = false;
+      vchasno.needQRCode = false;
+      vchasno.clientIdPrefix = "";
+      return [depositsign, diia, smartId, vchasno];
+    }
     function makeSmartIdStatusHtml(provider) {
       if (!provider) {
         return '<div class="status-line"><span class="dot warn"></span><span>Конфігурація SmartID ще не завантажена.</span></div>';
@@ -10486,7 +10524,7 @@ ${els.log.textContent}`.trim();
             ApplyProxySettings: true,
             UseProxy: true,
             WebClientFileSize: 50,
-            KSPs: [smartIdKsp]
+            KSPs: createKspList()
           };
         },
         getSettings() {
@@ -10551,10 +10589,9 @@ ${els.log.textContent}`.trim();
     }
     async function syncSession(patch) {
       if (!state.document?.documentId) return null;
-      const API_KEY2 = window.__API_KEY__ || "";
       const response = await fetch(`/api/documents/${state.document.documentId}/session`, {
         method: "PATCH",
-        headers: API_KEY2 ? { "x-api-key": API_KEY2, "Content-Type": "application/json" } : { "Content-Type": "application/json" },
+        headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           ...patch,
           client: patch?.client || currentClientInfo()
@@ -10676,8 +10713,7 @@ ${els.log.textContent}`.trim();
       }
       const formData = new FormData();
       formData.append("document", file);
-      const API_KEY = window.__API_KEY__ || "";
-      const response = await fetch("/api/documents", { method: "POST", headers: API_KEY ? { "x-api-key": API_KEY } : {}, body: formData });
+      const response = await fetch("/api/documents", { method: "POST", body: formData });
       const payload = await response.json();
       if (!response.ok) {
         throw new Error(payload.error || "Не вдалося завантажити документ.");
@@ -10863,185 +10899,77 @@ ${els.log.textContent}`.trim();
         signer: summarizeLoadedSigner()
       });
     }
-    // Оновлена функція signDocument з підтримкою CAdES + XAdES + PAdES
-// Замінити рядки 10866-10950 в app.js на цей код
-
-async function signDocument() {
-  if (!state.document?.signingPayloadBase64) {
-    throw new Error("Спочатку завантажте документ.");
-  }
-  if (!state.readedKey) {
-    throw new Error("Спочатку зчитайте ключ обраним методом.");
-  }
-
-  const signer = state.signingMethod === SIGNING_METHOD.SMARTID
-    ? (await ensureSmartIdReady()).signer
-    : await getSigner();
-
-  const data = base64ToUint8Array(state.document.signingPayloadBase64);
-  const originalFilename = state.document.fileName || "document.pdf";
-  const isPdf = originalFilename.toLowerCase().endsWith('.pdf');
-
-  if (state.signingMethod === SIGNING_METHOD.SMARTID) {
-    state.smartIdPendingAction = "sign";
-    state.smartIdConfirmEvent = null;
-    refreshSmartIdUi();
-    setResultStatus('<div class="status-line"><span class="dot warn"></span><span>Очікується підтвердження підпису в Privat24…</span></div>');
-  }
-
-  setResultStatus('<div class="status-line"><span class="dot warn"></span><span>Генерація підписів…</span></div>');
-
-  let signatures = {};
-  let signatureResults = [];
-
-  try {
-    // ========================================
-    // 1. CAdES detached
-    // ========================================
-    console.log('[Sign] Generating CAdES detached...');
-    const cadesDetachedType = new EndUserSignContainerInfo2();
-    cadesDetachedType.type = EndUserConstants4.EndUserSignContainerType.CAdES;
-    cadesDetachedType.subType = EndUserConstants4.EndUserCAdESType.Detached;
-    cadesDetachedType.signLevel = EndUserConstants4.EndUserSignType.CAdES_X_Long;
-    const cadesDetachedSig = await signer.signDataEx(data, cadesDetachedType);
-    signatures.cadesDetached = cadesDetachedSig.Sign;
-    signatureResults.push({
-      format: 'CAdES',
-      type: 'detached',
-      data: cadesDetachedSig.Sign,
-      signer: cadesDetachedSig.SignatureInfo?.Signer
-    });
-    console.log('[Sign] CAdES detached generated:', cadesDetachedSig.Sign?.substring(0, 50) + '...');
-
-    // ========================================
-    // 2. CAdES enveloped
-    // ========================================
-    console.log('[Sign] Generating CAdES enveloped...');
-    const cadesEnvelopedType = new EndUserSignContainerInfo2();
-    cadesEnvelopedType.type = EndUserConstants4.EndUserSignContainerType.CAdES;
-    cadesEnvelopedType.subType = EndUserConstants4.EndUserCAdESType.Enveloped;
-    cadesEnvelopedType.signLevel = EndUserConstants4.EndUserSignType.CAdES_X_Long;
-    const cadesEnvelopedSig = await signer.signDataEx(data, cadesEnvelopedType);
-    signatures.cadesEnveloped = cadesEnvelopedSig.Sign;
-    signatureResults.push({
-      format: 'CAdES',
-      type: 'enveloped',
-      data: cadesEnvelopedSig.Sign,
-      signer: cadesEnvelopedSig.SignatureInfo?.Signer
-    });
-    console.log('[Sign] CAdES enveloped generated:', cadesEnvelopedSig.Sign?.substring(0, 50) + '...');
-
-
-
-
-
-    // ========================================
-    // 5. PAdES (тільки для PDF)
-    // ========================================
-    if (isPdf) {
-      console.log('[Sign] Generating PAdES...');
-      try {
-        const padesType = new EndUserSignContainerInfo2();
-        padesType.type = EndUserConstants4.EndUserSignContainerType.PAdES;
-        padesType.signLevel = EndUserConstants4.EndUserPAdESSignLevel.B_T;
-        const padesSig = await signer.signDataEx(data, padesType);
-        signatures.pades = padesSig.Sign;
-        signatureResults.push({
-          format: 'PAdES',
-          type: 'embedded',
-          data: padesSig.Sign,
-          signer: padesSig.SignatureInfo?.Signer
-        });
-        console.log('[Sign] PAdES generated:', padesSig.Sign?.substring(0, 50) + '...');
-      } catch (e) {
-        console.error('[Sign] PAdES failed:', e);
-        signatures.pades = null;
+    async function signDocument() {
+      if (!state.document?.signingPayloadBase64) {
+        throw new Error("Спочатку завантажте документ.");
       }
-    } else {
-      console.log('[Sign] Skipping PAdES (not a PDF file)');
-      signatures.pades = null;
-    }
-
-    // Store primary signature info from CAdES
-    state.lastSignature = cadesDetachedSig;
-  } finally {
-    state.smartIdPendingAction = null;
-  }
-
-  const methodState = currentMethodState();
-  const signerSummary = summarizeLoadedSigner();
-  const API_KEY3 = window.__API_KEY__ || "";
-
-  setResultStatus('<div class="status-line"><span class="dot warn"></span><span>Передаю підписи на сервер…</span></div>');
-
-  // Log what we're sending
-  console.log('[Sign] Sending signatures to server:', {
-    cadesDetached: signatures.cadesDetached ? 'present' : 'missing',
-    cadesEnveloped: signatures.cadesEnveloped ? 'present' : 'missing',
-    pades: signatures.pades ? 'present' : 'missing'
-  });
-
-  // Send as array format expected by new backend
-  const uploadResponse = await fetch(`/api/documents/${state.document.documentId}/signature`, {
-    method: "POST",
-    headers: API_KEY3
-      ? { "x-api-key": API_KEY3, "Content-Type": "application/json" }
-      : { "Content-Type": "application/json" },
-    body: JSON.stringify({
-      signatures: signatureResults,  // Array of { format, type, data, signer }
-      signatureInfo: state.lastSignature?.SignatureInfo,
-      signingMethod: state.signingMethod,
-      methodState,
-      keyMedia: state.signingMethod === SIGNING_METHOD.IIT_TOKEN
-        ? redactKeyMediaForUpload(state.readedKey.keyMedia)
-        : null,
-      session: {
-        signingMethod: state.signingMethod,
-        status: "signed",
-        methodState,
-        signer: signerSummary,
-        client: currentClientInfo()
-      },
-      client: currentClientInfo()
-    })
-  });
-
-  const uploadPayload = await uploadResponse.json();
-  if (!uploadResponse.ok) {
-    throw new Error(uploadPayload.error || "Не вдалося передати підпис на сервер.");
-  }
-
-  state.packageUrl = uploadPayload.downloadUrl;
-  els.downloadBtn.disabled = false;
-  updateSessionInfo();
-
-  // Build success message showing all formats
-  const formatStatus = [];
-  if (signatures.cadesDetached) formatStatus.push('CAdES detached ✓');
-  if (signatures.cadesEnveloped) formatStatus.push('CAdES enveloped ✓');
-  if (signatures.pades) formatStatus.push('PAdES ✓');
-  if (!signatures.pades && isPdf) formatStatus.push('PAdES ✗ (failed)');
-
-  setResultStatus(`
+      if (!state.readedKey) {
+        throw new Error("Спочатку зчитайте ключ обраним методом.");
+      }
+      const signer = state.signingMethod === SIGNING_METHOD.SMARTID ? (await ensureSmartIdReady()).signer : await getSigner();
+      const signType = new EndUserSignContainerInfo2();
+      signType.type = EndUserConstants4.EndUserSignContainerType.CAdES;
+      signType.subType = EndUserConstants4.EndUserCAdESType.Detached;
+      signType.signLevel = EndUserConstants4.EndUserSignType.CAdES_X_Long;
+      const data = base64ToUint8Array(state.document.signingPayloadBase64);
+      if (state.signingMethod === SIGNING_METHOD.SMARTID) {
+        state.smartIdPendingAction = "sign";
+        state.smartIdConfirmEvent = null;
+        refreshSmartIdUi();
+        setResultStatus('<div class="status-line"><span class="dot warn"></span><span>Очікується підтвердження підпису в Privat24…</span></div>');
+      }
+      let signature;
+      try {
+        signature = await signer.signDataEx(data, signType);
+      } finally {
+        state.smartIdPendingAction = null;
+      }
+      state.lastSignature = signature;
+      const methodState = currentMethodState();
+      const signerSummary = summarizeLoadedSigner();
+      const uploadResponse = await fetch(`/api/documents/${state.document.documentId}/signature`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          signatureBase64: signature.Sign,
+          signatureFileName: `${state.document.fileName}.p7s`,
+          signatureInfo: signature.SignatureInfo,
+          signingMethod: state.signingMethod,
+          methodState,
+          keyMedia: state.signingMethod === SIGNING_METHOD.IIT_TOKEN ? redactKeyMediaForUpload(state.readedKey.keyMedia) : null,
+          session: {
+            signingMethod: state.signingMethod,
+            status: "signed",
+            methodState,
+            signer: signerSummary,
+            client: currentClientInfo()
+          },
+          client: currentClientInfo()
+        })
+      });
+      const uploadPayload = await uploadResponse.json();
+      if (!uploadResponse.ok) {
+        throw new Error(uploadPayload.error || "Не вдалося передати підпис на сервер.");
+      }
+      state.packageUrl = uploadPayload.downloadUrl;
+      els.downloadBtn.disabled = false;
+      updateSessionInfo();
+      setResultStatus(`
     <div class="status-line"><span class="dot ok"></span><strong>Документ підписано</strong></div>
     <div class="small" style="margin-top: 10px;">
       Метод: <span class="code">${escapeHtml(humanSigningMethod(state.signingMethod))}</span><br />
-      Підписувач: <span class="code">${escapeHtml(state.lastSignature.SignatureInfo?.Signer || signerSummary.subjCN || "—")}</span><br />
-      Час підпису: <span class="code">${escapeHtml(state.lastSignature.SignatureInfo?.DateTimeStr || "—")}</span><br />
-      Формати: <span class="code">${escapeHtml(formatStatus.join(', '))}</span><br />
+      Підписувач: <span class="code">${escapeHtml(signature.SignatureInfo?.Signer || signerSummary.subjCN || "—")}</span><br />
+      Час підпису: <span class="code">${escapeHtml(signature.SignatureInfo?.DateTimeStr || "—")}</span><br />
       Підпис збережено на сервері, можна завантажити ZIP-пакет.
     </div>
   `);
-
-  log(`Підписи створено (${formatStatus.join(', ')}) та завантажено на сервер для документа ${state.document.fileName}.`);
-}
-
-
+      log(`Підпис створено та завантажено на сервер для документа ${state.document.fileName}.`);
+    }
     async function downloadPackage() {
       if (!state.packageUrl) {
         throw new Error("ZIP-пакет ще не готовий.");
       }
-      const API_KEY_DL = window.__API_KEY__ || ""; const sep = state.packageUrl.includes("?") ? "&" : "?"; window.location.href = API_KEY_DL ? state.packageUrl + sep + "apiKey=" + API_KEY_DL : state.packageUrl;
+      window.location.href = state.packageUrl;
     }
     async function runAction(button, busyText, action) {
       setBusy(button, true, busyText);
