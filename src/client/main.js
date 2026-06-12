@@ -680,7 +680,7 @@ async function readJksKey() {
 async function readKey() {
   if (state.signingMethod === SIGNING_METHOD.PRIVATBANK_JKS) {
     await readJksKey();
-  } else else {
+  } else {
     await readHardwareKey();
   }
 
