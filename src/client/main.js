@@ -713,9 +713,151 @@ async function readJksKey() {
   log(`Зчитано файловий ключ з JKS контейнера ${state.readedKeyMeta.fileName}${state.readedKeyMeta.alias ? ` (${state.readedKeyMeta.alias})` : ''}.`);
 }
 
+
+// ── Хмарний підпис (KSP) ──────────────────────────────────────────────────
+
+function showCloudStatus(msg, type) {
+  if (typeof cloudStatusEl !== 'undefined' && cloudStatusEl) {
+    cloudStatusEl.textContent = msg;
+    cloudStatusEl.className = 'cloud-status cloud-status--' + (type || 'info');
+  }
+}
+
+function isTwoFactorError(err) {
+  const msg = ((err && (err.message || String(err))) || '').toLowerCase();
+  return msg.includes('otp') ||
+         msg.includes('two factor') ||
+         msg.includes('2fa') ||
+         msg.includes('twofa') ||
+         msg.includes('код підтвердження') ||
+         msg.includes('двофакторн');
+}
+
+function renderKeyMediaSelect(medias) {
+  if (typeof cloudKeyMediaSel === 'undefined' || !cloudKeyMediaSel) return;
+  cloudKeyMediaSel.innerHTML = (medias || [])
+    .map(function(m) {
+      const val = m.id || m.serial || '';
+      const lbl = m.label || m.description || m.id || 'Ключ';
+      return '<option value="' + val + '">' + lbl + '</option>';
+    })
+    .join('');
+  cloudKeyMediaSel.hidden = false;
+}
+
+async function readCloudKey() {
+  const provider = state.cloudKep.selectedProvider;
+  if (!provider) {
+    showCloudStatus('Оберіть КНЕДП', 'error');
+    return;
+  }
+
+  const userId = (typeof cloudUserIdInput !== 'undefined' && cloudUserIdInput)
+    ? cloudUserIdInput.value.trim()
+    : '';
+  if (!userId) {
+    showCloudStatus('Введіть ідентифікатор (РНОКПП або телефон)', 'error');
+    return;
+  }
+
+  state.cloudKep.userId = userId;
+
+  try {
+    showCloudStatus('Отримання списку ключів...', 'info');
+    const medias = await getSigner().getKeyMediasKSP(provider.kspSettings, null);
+    state.cloudKep.keyMedias = medias || [];
+
+    if (state.cloudKep.keyMedias.length > 1) {
+      renderKeyMediaSelect(state.cloudKep.keyMedias);
+      showCloudStatus('Оберіть ключ зі списку', 'info');
+      return;
+    }
+
+    state.cloudKep.selectedKeyId =
+      (state.cloudKep.keyMedias[0] && (state.cloudKep.keyMedias[0].id || state.cloudKep.keyMedias[0].serial)) || null;
+
+    await doReadPrivateKeyKSP();
+
+  } catch (err) {
+    const msg = (err && err.message) ? err.message : String(err);
+    showCloudStatus('Помилка: ' + msg, 'error');
+  }
+}
+
+async function doReadPrivateKeyKSP() {
+  const provider = state.cloudKep.selectedProvider;
+  if (!provider) return;
+
+  showCloudStatus(
+    'Очікуємо підтвердження в застосунку ' + provider.label + '...',
+    'waiting'
+  );
+  state.cloudKep.awaitingConfirmation = true;
+
+  try {
+    await getSigner().readPrivateKeyKSP(
+      provider.kspSettings,
+      state.cloudKep.userId,
+      true,
+      state.cloudKep.selectedKeyId,
+      null
+    );
+
+    state.cloudKep.awaitingConfirmation = false;
+    showCloudStatus('Ключ зчитано успішно', 'success');
+
+    if (typeof updateUiAfterKeyRead === 'function') {
+      updateUiAfterKeyRead();
+    }
+
+  } catch (err) {
+    state.cloudKep.awaitingConfirmation = false;
+
+    if (isTwoFactorError(err)) {
+      state.cloudKep.awaitingTwoFactor = true;
+      if (typeof cloudTwoFactorWrap !== 'undefined' && cloudTwoFactorWrap) {
+        cloudTwoFactorWrap.hidden = false;
+      }
+      showCloudStatus('Введіть код підтвердження (OTP)', 'info');
+      return;
+    }
+
+    const msg = (err && err.message) ? err.message : String(err);
+    showCloudStatus('Помилка зчитування: ' + msg, 'error');
+  }
+}
+
+async function submitTwoFactorKSP() {
+  const code = (typeof cloudTwoFactorInput !== 'undefined' && cloudTwoFactorInput)
+    ? cloudTwoFactorInput.value.trim()
+    : '';
+  if (!code) return;
+
+  try {
+    await getSigner().setTwoFactorCodeKSP(code);
+
+    if (typeof cloudTwoFactorWrap !== 'undefined' && cloudTwoFactorWrap) {
+      cloudTwoFactorWrap.hidden = true;
+    }
+    state.cloudKep.awaitingTwoFactor = false;
+    showCloudStatus('Ключ зчитано успішно', 'success');
+
+    if (typeof updateUiAfterKeyRead === 'function') {
+      updateUiAfterKeyRead();
+    }
+  } catch (err) {
+    const msg = (err && err.message) ? err.message : String(err);
+    showCloudStatus('Невірний код: ' + msg, 'error');
+  }
+}
+
+// ── Кінець KSP блоку ───────────────────────────────────────────────────────
+
 async function readKey() {
   if (state.signingMethod === SIGNING_METHOD.PRIVATBANK_JKS) {
     await readJksKey();
+  } else if (state.signingMethod === SIGNING_METHOD.CLOUD_KEP) {
+    await readCloudKey();
   } else {
     await readHardwareKey();
   }
