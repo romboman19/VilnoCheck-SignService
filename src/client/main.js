@@ -40,6 +40,18 @@ const els = {
   jksKeyPanel: document.getElementById('jksPanelKey'),
 };
 
+// Cloud KSP refs
+const cloudPanel = document.getElementById('cloudPanel');
+const cloudPanelKey = document.getElementById('cloudPanelKey');
+const cloudProviderSel = document.getElementById('cloudProviderSelect');
+const cloudUserIdInput = document.getElementById('cloudUserId');
+const cloudKeyMediaSel = document.getElementById('cloudKeyMediaSelect');
+const cloudReadKeyBtn = document.getElementById('cloudReadKeyBtn');
+const cloudStatusEl = document.getElementById('cloudStatus');
+const cloudTwoFactorWrap = document.getElementById('cloudTwoFactorWrap');
+const cloudTwoFactorInput= document.getElementById('cloudTwoFactorInput');
+const cloudTwoFactorBtn = document.getElementById('cloudTwoFactorSubmit');
+
 const state = {
   signer: null,
   signingMethod: SIGNING_METHOD.IIT_TOKEN,
@@ -329,6 +341,26 @@ function applyBootstrap(bootstrap) {
   if (!bootstrap || typeof bootstrap !== 'object') return;
   state.bootstrap = bootstrap;
 
+ // Cloud KSP: load providers if method is enabled
+ if (bootstrap && Array.isArray(bootstrap.methods) &&
+ bootstrap.methods.some(function(m) { return m.id === 'cloud-kep'; })) {
+ fetch('/data/CAs.json')
+ .then(function(r) { return r.json(); })
+ .then(function(cas) {
+ state.cloudKep.providers = buildKspProviders(cas);
+ if (cloudProviderSel) {
+ cloudProviderSel.innerHTML =
+ '<option value="">— Оберіть провайдера —</option>' +
+ state.cloudKep.providers
+ .map(function(p, i) {
+ return '<option value="' + i + '">' + p.label + '</option>';
+ })
+ .join('');
+ }
+ })
+ .catch(function(e) { console.warn('CAs.json load error', e); });
+ }
+
 }
 async function loadBootstrap() {
 
@@ -447,6 +479,14 @@ function resetSignatureState(message = 'Підпис ще не створено.
   state.packageUrl = null;
   els.downloadBtn.disabled = true;
   setResultStatus(message);
+
+  // Cloud KSP cleanup
+  state.cloudKep.awaitingConfirmation = false;
+  state.cloudKep.awaitingTwoFactor = false;
+  state.cloudKep.selectedKeyId = null;
+  if (cloudTwoFactorWrap) cloudTwoFactorWrap.hidden = true;
+  if (cloudTwoFactorInput) cloudTwoFactorInput.value = '';
+  showCloudStatus('', 'info');
 }
 
 async function clearLoadedKey(statusHtml) {
@@ -494,6 +534,8 @@ async function setSigningMethod(method, { persist = true } = {}) {
   els.jksPanel.classList.toggle('hidden', state.signingMethod !== SIGNING_METHOD.PRIVATBANK_JKS);
   els.tokenKeyPanel.classList.toggle('hidden', state.signingMethod !== SIGNING_METHOD.IIT_TOKEN);
   els.jksKeyPanel.classList.toggle('hidden', state.signingMethod !== SIGNING_METHOD.PRIVATBANK_JKS);
+  if (cloudPanel) cloudPanel.classList.toggle('hidden', state.signingMethod !== SIGNING_METHOD.CLOUD_KEP);
+  if (cloudPanelKey) cloudPanelKey.classList.toggle('hidden', state.signingMethod !== SIGNING_METHOD.CLOUD_KEP);
 
   els.pinInput.value = '';
   els.jksPasswordInput.value = '';
@@ -1054,6 +1096,30 @@ els.jksFileInput.addEventListener('change', async () => {
   }
 });
 
+
+// Cloud KSP event handlers
+if (cloudProviderSel) {
+  cloudProviderSel.addEventListener('change', function() {
+    var idx = parseInt(cloudProviderSel.value, 10);
+    state.cloudKep.selectedProvider = isNaN(idx) ? null : (state.cloudKep.providers[idx] || null);
+    showCloudStatus('', 'info');
+  });
+}
+
+if (cloudReadKeyBtn) {
+  cloudReadKeyBtn.addEventListener('click', function() { readCloudKey(); });
+}
+
+if (cloudKeyMediaSel) {
+  cloudKeyMediaSel.addEventListener('change', async function() {
+    state.cloudKep.selectedKeyId = cloudKeyMediaSel.value || null;
+    await doReadPrivateKeyKSP();
+  });
+}
+
+if (cloudTwoFactorBtn) {
+  cloudTwoFactorBtn.addEventListener('click', function() { submitTwoFactorKSP(); });
+}
 setAgentStatus(makeLibraryInfoHtml(null));
 setFileModeStatus(makeFileModeHtml());
 setDocumentStatus('Документ ще не завантажено.');
