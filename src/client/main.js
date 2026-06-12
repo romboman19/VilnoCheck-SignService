@@ -6,6 +6,7 @@ const { EndUserConstants, EndUserSignContainerInfo, EndUser } = EUSignCP;
 const SIGNING_METHOD = {
   IIT_TOKEN: 'iit-token',
   PRIVATBANK_JKS: 'privatbank-jks',
+  CLOUD_KEP: 'cloud-kep',
 };
 
 const els = {
@@ -52,12 +53,42 @@ const state = {
   jksPrivateKeys: [],
   lastSignature: null,
   packageUrl: null,
-  bootstrap: null
+  bootstrap: null,
+  cloudKep: { providers: [], selectedProvider: null, userId: '', keyMedias: [], selectedKeyId: null, awaitingConfirmation: false, awaitingTwoFactor: false }
 };
+
+
+function buildKspProviders(cas) {
+  const kspTypeMap = [
+    { match: (ca) => /дія|informjust/i.test(JSON.stringify(ca)), ksp: 'DIIA' },
+    { match: (ca) => /приватбанк|privatbank/i.test(JSON.stringify(ca)), ksp: 'PB' },
+    { match: (ca) => /ukey/i.test(JSON.stringify(ca)), ksp: 'UKey' },
+    { match: (ca) => /kyivstar/i.test(JSON.stringify(ca)), ksp: 'Kyivstar' },
+    { match: (ca) => /vodafone/i.test(JSON.stringify(ca)), ksp: 'Vodafone' },
+    { match: (ca) => /lifecell/i.test(JSON.stringify(ca)), ksp: 'Lifecell' },
+  ];
+  return (cas || [])
+    .filter(ca => ca.cmpAddress)
+    .map(ca => {
+      const found = kspTypeMap.find(m => m.match(ca));
+      return {
+        label: (ca.issuerCNs && ca.issuerCNs[0]) || ca.name || ca.id,
+        kspSettings: {
+          name: (ca.issuerCNs && ca.issuerCNs[0]) || ca.name,
+          ksp: found ? found.ksp : 'IIT',
+          address: ca.cmpAddress,
+          port: ca.cmpPort || '8080',
+          directAccess: ca.directAccess || false,
+          codeEDRPOU: ca.codeEDRPOU || ''
+        }
+      };
+    });
+}
 
 function normalizeSigningMethod(method) {
   const value = String(method || '').trim();
   if (value === SIGNING_METHOD.PRIVATBANK_JKS) return SIGNING_METHOD.PRIVATBANK_JKS;
+  if (value === SIGNING_METHOD.CLOUD_KEP) return SIGNING_METHOD.CLOUD_KEP;
   return SIGNING_METHOD.IIT_TOKEN;
 }
 
@@ -95,6 +126,8 @@ function humanSigningMethod(method) {
   switch (method) {
     case SIGNING_METHOD.PRIVATBANK_JKS:
       return 'PrivatBank JKS';
+    case SIGNING_METHOD.CLOUD_KEP:
+      return 'Хмарний КЕП';
     case SIGNING_METHOD.IIT_TOKEN:
     default:
       return 'IIT токен';
@@ -122,6 +155,9 @@ function loadedKeyLabel() {
     const fileName = state.readedKeyMeta?.fileName || 'container.jks';
     const alias = state.readedKeyMeta?.alias || 'ключ';
     return `${fileName} · ${alias}`;
+  }
+  if (state.signingMethod === SIGNING_METHOD.CLOUD_KEP) {
+    return '☁️ ' + (state.cloudKep.selectedProvider?.label ?? 'Хмарний ключ');
   }
   return mediaLabel(state.readedKey.keyMedia);
 }
