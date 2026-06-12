@@ -4,3 +4,5 @@ storage/
 npm-debug.log*
 logs/
 .env
+*.bak
+*.bak*
