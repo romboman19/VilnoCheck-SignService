@@ -33,18 +33,10 @@ const SIGNING_METHODS = Object.freeze([
     label: 'PrivatBank JKS',
     productionReady: true,
     experimental: false
-  },
-  {
-    id: 'cloud-kep',
-    family: 'cloud-signing',
-    label: 'Хмарний підпис (КЕП)',
-    productionReady: false,
-    experimental: true
   }
 ]);
 const ALLOWED_SIGNING_METHODS = new Set(SIGNING_METHODS.map((method) => method.id));
 const SIGNING_METHOD_ALIASES = new Map([
-  ['cloud-kep']
 ]);
 const SENSITIVE_FIELD_PATTERN = /(password|pass|pin|secret|privatekey|private_key|signaturebase64|filebase64|raw|binary|content|buffer|data)$/i;
 const EXTRA_PROXY_ALLOWED_HOSTS = new Set(['zc.bank.gov.ua']);
