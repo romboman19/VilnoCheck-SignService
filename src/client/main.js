@@ -700,7 +700,7 @@ async function signDocument() {
     throw new Error('Спочатку зчитайте ключ обраним методом.');
   }
 
-    : await getSigner();
+  const signer = await getSigner();
   const signType = new EndUserSignContainerInfo();
   signType.type = EndUserConstants.EndUserSignContainerType.CAdES;
   signType.subType = EndUserConstants.EndUserCAdESType.Detached;
