@@ -7,12 +7,10 @@ const path = require('path');
 const { URL } = require('url');
 const morgan = require('morgan');
 const fs = require('fs');
-const { buildSmartIdProviderConfig, probeSmartIdProvider, probe, initSession, getStatus, ENABLED } = require('./providers/privatbank-smartid');
 const { setupSecurity, generalLimiter, documentLimiter, pkiLimiter, requireApiKey } = require('./middleware/security');
 const { cleanupExpiredDocuments } = require('./cleanup');
 const { verifyDetachedSignature } = require('./verify');
 const { generateSignatureProtocol } = require('./generate-protocol');
-
 const app = express();
 const port = Number(process.env.PORT || 3017);
 const host = process.env.HOST || '0.0.0.0';
@@ -37,50 +35,41 @@ const SIGNING_METHODS = Object.freeze([
     experimental: false
   },
   {
-    id: 'smartid',
+    id: 'cloud-kep',
     family: 'cloud-signing',
-    label: 'SmartID',
-    providerId: 'pb-smartid',
+    label: 'Хмарний підпис (КЕП)',
     productionReady: false,
     experimental: true
   }
 ]);
 const ALLOWED_SIGNING_METHODS = new Set(SIGNING_METHODS.map((method) => method.id));
 const SIGNING_METHOD_ALIASES = new Map([
-  ['privatbank-smartid', 'smartid']
+  ['cloud-kep']
 ]);
 const SENSITIVE_FIELD_PATTERN = /(password|pass|pin|secret|privatekey|private_key|signaturebase64|filebase64|raw|binary|content|buffer|data)$/i;
 const EXTRA_PROXY_ALLOWED_HOSTS = new Set(['zc.bank.gov.ua']);
-
 app.disable('x-powered-by');
-
 // Security middleware
 setupSecurity(app);
 app.use(generalLimiter);
-
 // Morgan logging
 const logsDir = path.join(appRoot, 'logs');
 if (!fs.existsSync(logsDir)) fs.mkdirSync(logsDir, { recursive: true });
-
 // Console logging (dev format) for non-production
 if (process.env.NODE_ENV !== 'production') {
   app.use(morgan('dev'));
 }
-
 // File logging (combined format)
 const accessLogStream = fs.createWriteStream(
   path.join(logsDir, 'access.log'),
   { flags: 'a' }
 );
 app.use(morgan('combined', { stream: accessLogStream }));
-
 app.use(express.json({ limit: '10mb' }));
 app.get('/vendor/euscp.worker.js', (_req, res) => {
   res.sendFile(path.join(appRoot, 'node_modules', '@it-enterprise', 'digital-signature', 'src', 'euscp.worker.js'));
 });
-
 function buildBootstrapPayload() {
-  const smartIdProvider = buildSmartIdProviderConfig();
   return {
     service: 'sign-service',
     version: serviceVersion,
@@ -89,56 +78,31 @@ function buildBootstrapPayload() {
     },
     signingMethods: SIGNING_METHODS.map((method) => ({
       ...method,
-      enabled: method.id === 'smartid' ? Boolean(smartIdProvider.enabled) : true
+      enabled: true
     })),
     providers: {
-      smartId: smartIdProvider
     }
   };
 }
-
 app.get('/api/bootstrap', (req, res) => {
   res.json({
     ok: true,
     bootstrap: buildBootstrapPayload()
   });
 });
-
-app.get('/api/providers/privatbank-smartid', async (req, res, next) => {
-  try {
-    const config = buildSmartIdProviderConfig();
-    const probe = String(req.query.probe || '').trim();
-    const includeProbe = ['1', 'true', 'yes'].includes(probe.toLowerCase());
-
-    res.json({
-      ok: true,
-      methodId: 'smartid',
-      provider: config,
-      probe: includeProbe ? await probeSmartIdProvider(config) : null
-    });
-  } catch (error) {
-    next(error);
-  }
-});
-
 let proxyAllowedHostsPromise = null;
-
 function normalizeProxyTarget(rawAddress) {
   const trimmed = String(rawAddress || '').trim();
   if (!trimmed) {
     throw new Error('PKI proxy target is missing.');
   }
-
   const withProtocol = /^[a-z][a-z0-9+.-]*:\/\//i.test(trimmed) ? trimmed : `http://${trimmed}`;
   const url = new URL(withProtocol);
-
   if (!['http:', 'https:'].includes(url.protocol)) {
     throw new Error(`Unsupported PKI proxy protocol: ${url.protocol}`);
   }
-
   return url;
 }
-
 function addHostToAllowList(target, hosts) {
   if (!target) return;
   try {
@@ -150,7 +114,6 @@ function addHostToAllowList(target, hosts) {
     // ignore malformed CA endpoints
   }
 }
-
 async function getProxyAllowedHosts() {
   if (!proxyAllowedHostsPromise) {
     proxyAllowedHostsPromise = (async () => {
@@ -158,7 +121,6 @@ async function getProxyAllowedHosts() {
       const raw = await fsp.readFile(caFile, 'utf8');
       const data = JSON.parse(raw);
       const hosts = new Set();
-
       for (const ca of Array.isArray(data) ? data : []) {
         addHostToAllowList(ca?.address, hosts);
         addHostToAllowList(ca?.ocspAccessPointAddress, hosts);
@@ -166,7 +128,6 @@ async function getProxyAllowedHosts() {
         addHostToAllowList(ca?.tspAddress, hosts);
         addHostToAllowList(ca?.ldapAddress, hosts);
       }
-
       for (const host of EXTRA_PROXY_ALLOWED_HOSTS) hosts.add(host);
       return hosts;
     })().catch((error) => {
@@ -174,25 +135,20 @@ async function getProxyAllowedHosts() {
       throw error;
     });
   }
-
   return proxyAllowedHostsPromise;
 }
-
 app.all('/pki/ProxyHandler', pkiLimiter, express.text({ type: '*/*', limit: '10mb' }), async (req, res) => {
   try {
     const upstreamUrl = normalizeProxyTarget(req.query.address);
     const allowedHosts = await getProxyAllowedHosts();
-
     if (!allowedHosts.has(upstreamUrl.hostname.toLowerCase())) {
       return res.status(403).type('text/plain; charset=utf-8').send('PKI proxy host is not allowed.');
     }
-
     const requestContentType = String(req.query.contentType || '').trim() || 'application/octet-stream';
     const requestHeaders = {
       Accept: '*/*',
       'User-Agent': `VilnoCheck-SignService/${serviceVersion} ProxyHandler`
     };
-
     let requestBody;
     if (!['GET', 'HEAD'].includes(req.method)) {
       const incomingBody = typeof req.body === 'string' ? req.body.trim() : '';
@@ -200,20 +156,17 @@ app.all('/pki/ProxyHandler', pkiLimiter, express.text({ type: '*/*', limit: '10m
       requestHeaders['Content-Type'] = requestContentType;
       requestHeaders['Content-Length'] = String(requestBody.length);
     }
-
     const upstreamResponse = await fetch(upstreamUrl, {
       method: req.method,
       headers: requestHeaders,
       body: requestBody,
       redirect: 'follow'
     });
-
     const responseBuffer = Buffer.from(await upstreamResponse.arrayBuffer());
     if (!upstreamResponse.ok) {
       console.warn(`[pki-proxy] ${req.method} ${upstreamUrl} -> ${upstreamResponse.status}`);
       return res.status(502).type('text/plain; charset=utf-8').send(`PKI upstream error: ${upstreamResponse.status}`);
     }
-
     res.set('Cache-Control', 'no-store');
     res.type('text/plain; charset=utf-8').send(responseBuffer.toString('base64'));
   } catch (error) {
@@ -221,17 +174,13 @@ app.all('/pki/ProxyHandler', pkiLimiter, express.text({ type: '*/*', limit: '10m
     res.status(502).type('text/plain; charset=utf-8').send('PKI proxy request failed.');
   }
 });
-
-
 // Config endpoint for client-side API key
 app.get('/config.js', (_req, res) => {
   res.type('application/javascript');
   const key = process.env.CLIENT_API_KEY || process.env.API_KEY || '';
   res.send(`window.__API_KEY__ = "${key}";`);
 });
-
 app.use(express.static(path.join(appRoot, 'public')));
-
 function decodeUploadFileName(fileName) {
   const value = String(fileName || '');
   if (!value) return value;
@@ -243,7 +192,6 @@ function decodeUploadFileName(fileName) {
     return value;
   }
 }
-
 function safeFileName(fileName, fallback = 'document.bin') {
   const raw = String(fileName || fallback)
     .replace(/[\\/]+/g, '_')
@@ -252,25 +200,20 @@ function safeFileName(fileName, fallback = 'document.bin') {
   const cleaned = raw.replace(/\s+/g, ' ').replace(/^\.+/, '').trim();
   return cleaned || fallback;
 }
-
 function redactKeyMedia(keyMedia) {
   if (!keyMedia || typeof keyMedia !== 'object') return null;
   const { password, pass, pin, secret, ...rest } = keyMedia;
   return rest;
 }
-
 function sanitizeSessionValue(value, depth = 0) {
   if (value == null) return value;
   if (depth > 6) return null;
-
   if (Array.isArray(value)) {
     return value.slice(0, 25).map((entry) => sanitizeSessionValue(entry, depth + 1));
   }
-
   if (Buffer.isBuffer(value)) {
     return `[buffer:${value.length}]`;
   }
-
   if (typeof value === 'object') {
     const output = {};
     for (const [key, nestedValue] of Object.entries(value)) {
@@ -279,32 +222,26 @@ function sanitizeSessionValue(value, depth = 0) {
     }
     return output;
   }
-
   if (typeof value === 'string' && value.length > 2000) {
     return `${value.slice(0, 2000)}…`;
   }
-
   return value;
 }
-
 function normalizeSigningMethod(method) {
   const value = String(method || '').trim();
   if (!value) return null;
   const normalized = SIGNING_METHOD_ALIASES.get(value) || value;
   return ALLOWED_SIGNING_METHODS.has(normalized) ? normalized : null;
 }
-
 function normalizeStatus(value) {
   if (value == null) return null;
   const status = String(value).trim();
   if (!status) return null;
   return status.slice(0, 64);
 }
-
 function mergeSession(record, patch = {}) {
   const previous = record && typeof record === 'object' ? record : {};
   const next = { ...previous };
-
   if (Object.prototype.hasOwnProperty.call(patch, 'signingMethod')) {
     next.signingMethod = normalizeSigningMethod(patch.signingMethod);
   }
@@ -320,11 +257,9 @@ function mergeSession(record, patch = {}) {
   if (Object.prototype.hasOwnProperty.call(patch, 'client')) {
     next.client = sanitizeSessionValue(patch.client);
   }
-
   next.updatedAt = new Date().toISOString();
   return next;
 }
-
 function asciiDownloadName(fileName, fallback = 'signed-package.zip') {
   const base = String(fileName || fallback)
     .normalize('NFKD')
@@ -334,31 +269,25 @@ function asciiDownloadName(fileName, fallback = 'signed-package.zip') {
     .replace(/^-|-$/g, '');
   return base || fallback;
 }
-
 function sha256(buffer) {
   return crypto.createHash('sha256').update(buffer).digest('hex');
 }
-
 function jsonFile(documentId) {
   return path.join(storageRoot, documentId, 'record.json');
 }
-
 async function ensureDir(dirPath) {
   await fsp.mkdir(dirPath, { recursive: true });
 }
-
 async function loadRecord(documentId) {
   const filePath = jsonFile(documentId);
   const raw = await fsp.readFile(filePath, 'utf8');
   return JSON.parse(raw);
 }
-
 async function saveRecord(documentId, record) {
   const dirPath = path.dirname(jsonFile(documentId));
   await ensureDir(dirPath);
   await fsp.writeFile(jsonFile(documentId), JSON.stringify(record, null, 2));
 }
-
 app.get('/api/health', (_req, res) => {
   res.json({
     ok: true,
@@ -367,59 +296,19 @@ app.get('/api/health', (_req, res) => {
     signingMethods: SIGNING_METHODS.map((method) => method.id)
   });
 });
-
-// SmartID endpoints
-app.get('/api/providers/privatbank-smartid/status/:sessionId', async (req, res) => {
-  try {
-    const result = await getStatus(req.params.sessionId);
-    res.json(result);
-  } catch (err) {
-    res.status(500).json({ status: 'error', error: err.message });
-  }
-});
-
-// POST /api/providers/privatbank-smartid/init — ініціювати SmartID сесію
-app.post('/api/providers/privatbank-smartid/init', requireApiKey, async (req, res) => {
-  try {
-    const { documentId } = req.body;
-    if (!documentId) {
-      return res.status(400).json({ error: 'documentId required' });
-    }
-
-    // Зчитати документ зі storage
-    const record = await loadRecord(documentId);
-    const documentBytes = await fsp.readFile(record.document.path);
-
-    const result = await initSession(documentBytes, record.document.originalName);
-    res.json(result);
-  } catch (err) {
-    // 503 = Service Unavailable (не налаштовано)
-    if (err.message.includes('not configured') || err.message.includes('not yet activated')) {
-      return res.status(503).json({ 
-        error: err.message,
-        hint: 'Contact PrivatBank at acsk@privatbank.ua to obtain SMARTID_CLIENT_ID_PREFIX'
-      });
-    }
-    res.status(500).json({ error: err.message });
-  }
-});
-
 app.post('/api/documents', requireApiKey, documentLimiter, upload.single('document'), async (req, res, next) => {
   try {
     if (!req.file || !req.file.buffer?.length) {
       return res.status(400).json({ error: 'document file is required' });
     }
-
     const documentId = crypto.randomUUID();
     const createdAt = new Date().toISOString();
     const originalName = safeFileName(decodeUploadFileName(req.file.originalname) || 'document.bin');
     const directory = path.join(storageRoot, documentId);
     const originalPath = path.join(directory, originalName);
     const buffer = req.file.buffer;
-
     await ensureDir(directory);
     await fsp.writeFile(originalPath, buffer);
-
     const record = {
       id: documentId,
       createdAt,
@@ -441,9 +330,7 @@ app.post('/api/documents', requireApiKey, documentLimiter, upload.single('docume
       },
       signature: null
     };
-
     await saveRecord(documentId, record);
-
     res.json({
       ok: true,
       documentId,
@@ -459,14 +346,12 @@ app.post('/api/documents', requireApiKey, documentLimiter, upload.single('docume
     next(error);
   }
 });
-
 app.patch('/api/documents/:documentId/session', requireApiKey, async (req, res, next) => {
   try {
     const { documentId } = req.params;
     const record = await loadRecord(documentId);
     record.session = mergeSession(record.session, req.body || {});
     await saveRecord(documentId, record);
-
     res.json({
       ok: true,
       documentId,
@@ -479,7 +364,6 @@ app.patch('/api/documents/:documentId/session', requireApiKey, async (req, res, 
     next(error);
   }
 });
-
 app.post('/api/documents/:documentId/signature', requireApiKey, async (req, res, next) => {
   try {
     const { documentId } = req.params;
@@ -492,13 +376,11 @@ app.post('/api/documents/:documentId/signature', requireApiKey, async (req, res,
       methodState,
       session
     } = req.body || {};
-
     // signatures can be either:    // - object: { cadesDetached, cadesEnveloped, pades }
     // - array: [{ format, type, data }, ...]
     if (!signatures || typeof signatures !== 'object') {
       return res.status(400).json({ error: 'signatures object or array is required' });
     }
-
     // Convert array format to object format
     let sigObject = signatures;
     if (Array.isArray(signatures)) {
@@ -514,15 +396,12 @@ app.post('/api/documents/:documentId/signature', requireApiKey, async (req, res,
       }
       signatures = sigObject;
     }
-
     const record = await loadRecord(documentId);
     const normalizedSigningMethod = normalizeSigningMethod(signingMethod || session?.signingMethod);
     const baseName = path.parse(record.document.originalName).name;
-
     // Storage for all signature files
     const sigFiles = {};
     const sigDir = path.join(storageRoot, documentId);
-
     // Save CAdES detached
     if (signatures.cadesDetached) {
       const buf = Buffer.from(signatures.cadesDetached, 'base64');
@@ -531,7 +410,6 @@ app.post('/api/documents/:documentId/signature', requireApiKey, async (req, res,
       await fsp.writeFile(filePath, buf);
       sigFiles.cadesDetached = { fileName, path: filePath, size: buf.length, sha256: sha256(buf) };
     }
-
     // Save CAdES enveloped
     if (signatures.cadesEnveloped) {
       const buf = Buffer.from(signatures.cadesEnveloped, 'base64');
@@ -540,7 +418,6 @@ app.post('/api/documents/:documentId/signature', requireApiKey, async (req, res,
       await fsp.writeFile(filePath, buf);
       sigFiles.cadesEnveloped = { fileName, path: filePath, size: buf.length, sha256: sha256(buf) };
     }
-
     // Save PAdES (only for PDF)
     if (signatures.pades && record.document.mimeType === 'application/pdf') {
       const buf = Buffer.from(signatures.pades, 'base64');
@@ -549,17 +426,14 @@ app.post('/api/documents/:documentId/signature', requireApiKey, async (req, res,
       await fsp.writeFile(filePath, buf);
       sigFiles.pades = { fileName, path: filePath, size: buf.length, sha256: sha256(buf) };
     }
-
     // Verify at least one signature was provided
     if (Object.keys(sigFiles).length === 0) {
       return res.status(400).json({ error: 'at least one signature format required' });
     }
-
     // Use first signature for verification info
     const firstSig = Object.values(sigFiles)[0];
     const documentBytes = await fsp.readFile(record.document.path);
     const verifyResult = await verifyDetachedSignature(documentBytes, await fsp.readFile(firstSig.path));
-
     record.session = mergeSession(record.session, {
       ...(session && typeof session === 'object' ? session : {}),
       signingMethod: normalizedSigningMethod,
@@ -567,7 +441,6 @@ app.post('/api/documents/:documentId/signature', requireApiKey, async (req, res,
       methodState: methodState ?? session?.methodState,
       client: client ?? session?.client
     });
-
     record.signatures = sigFiles;
     record.signature = {
       uploadedAt: new Date().toISOString(),
@@ -588,9 +461,7 @@ app.post('/api/documents/:documentId/signature', requireApiKey, async (req, res,
         issuer: verifyResult.issuer
       }
     };
-
     await saveRecord(documentId, record);
-
     res.json({
       ok: true,
       documentId,
@@ -605,34 +476,26 @@ app.post('/api/documents/:documentId/signature', requireApiKey, async (req, res,
     next(error);
   }
 });
-
 app.get('/api/documents/:documentId/package', requireApiKey, async (req, res, next) => {
   try {
     const { documentId } = req.params;
     const record = await loadRecord(documentId);
-
     // Support both old (record.signature) and new (record.signatures) structure
     const hasSignatures = record.signatures && Object.keys(record.signatures).length > 0;
     const hasLegacySignature = record.signature?.path;
-
     if (!hasSignatures && !hasLegacySignature) {
       return res.status(409).json({ error: 'signature has not been uploaded yet' });
     }
-
     const packageName = `${path.parse(record.document.originalName).name}.signed-package.zip`;
     const downloadName = asciiDownloadName(packageName);
     res.setHeader('Content-Type', 'application/zip');
     res.setHeader('Content-Disposition', `attachment; filename="${downloadName}"`);
-
     const archive = archiver('zip', { zlib: { level: 9 } });
     archive.on('error', next);
     archive.pipe(res);
-
     const baseName = path.parse(record.document.originalName).name;
-
     // Original document in original/ folder only
     archive.file(record.document.path, { name: `original/${record.document.originalName}` });
-
     // CAdES folder
     if (hasSignatures) {
       if (record.signatures.cadesDetached) {
@@ -645,7 +508,6 @@ app.get('/api/documents/:documentId/package', requireApiKey, async (req, res, ne
       // Legacy: put in CAdES folder
       archive.file(record.signature.path, { name: `CAdES/${record.signature.fileName}` });
     }
-
     // PAdES folder
     if (hasSignatures && record.signatures.pades) {
       archive.file(record.signatures.pades.path, { name: `PAdES/${record.signatures.pades.fileName}` });
@@ -653,7 +515,6 @@ app.get('/api/documents/:documentId/package', requireApiKey, async (req, res, ne
       // Add README for non-PDF or missing PAdES
       archive.append('PAdES format is not yet implemented.', { name: 'PAdES/README.txt' });
     }
-
     // Build manifest with all signatures
     const signaturesManifest = hasSignatures ? {
       cadesDetached: record.signatures.cadesDetached ? {
@@ -681,7 +542,6 @@ app.get('/api/documents/:documentId/package', requireApiKey, async (req, res, ne
       cadesEnveloped: null,
       pades: null
     };
-
     archive.append(JSON.stringify({
       generatedAt: new Date().toISOString(),
       service: 'sign-service',
@@ -708,7 +568,6 @@ app.get('/api/documents/:documentId/package', requireApiKey, async (req, res, ne
         verification: record.signature?.verification || null
       }
     }, null, 2), { name: 'manifest.json' });
-
     // Generate and add PDF protocol
     try {
       const protocolData = {
@@ -726,7 +585,6 @@ app.get('/api/documents/:documentId/package', requireApiKey, async (req, res, ne
     } catch (err) {
       console.error("[protocol] Failed to generate PDF protocol:", err.message);
     }
-
     await archive.finalize();
   } catch (error) {
     if (error && error.code === 'ENOENT') {
@@ -735,19 +593,16 @@ app.get('/api/documents/:documentId/package', requireApiKey, async (req, res, ne
     next(error);
   }
 });
-
 app.get('*', (req, res) => {
   if (req.path.startsWith('/api/')) {
     return res.status(404).json({ error: 'not found' });
   }
   res.sendFile(path.join(appRoot, 'public', 'index.html'));
 });
-
 app.use((error, _req, res, _next) => {
   console.error('[sign-service]', error);
   res.status(500).json({ error: error?.message || 'internal server error' });
 });
-
 ensureDir(storageRoot)
   .then(() => {
     // Initialize cleanup
