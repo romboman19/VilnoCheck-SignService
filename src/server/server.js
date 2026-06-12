@@ -19,6 +19,7 @@ const packageJson = require(path.join(appRoot, 'package.json'));
 const serviceVersion = packageJson.version || '0.0.0';
 const storageRoot = path.resolve(process.env.SIGN_STORAGE_DIR || path.join(appRoot, 'storage'));
 const upload = multer({ storage: multer.memoryStorage(), limits: { fileSize: 50 * 1024 * 1024 } });
+const CLOUD_SIGN_ENABLED = process.env.CLOUD_SIGN_ENABLED === '1';
 const SIGNING_METHODS = Object.freeze([
   {
     id: 'iit-token',
@@ -33,7 +34,14 @@ const SIGNING_METHODS = Object.freeze([
     label: 'PrivatBank JKS',
     productionReady: true,
     experimental: false
-  }
+  },
+  ...(CLOUD_SIGN_ENABLED ? [{
+    id: 'cloud-kep',
+    family: 'cloud-signing',
+    label: 'Хмарний КЕП',
+    productionReady: false,
+    experimental: true
+  }] : [])
 ]);
 const ALLOWED_SIGNING_METHODS = new Set(SIGNING_METHODS.map((method) => method.id));
 const SIGNING_METHOD_ALIASES = new Map([
