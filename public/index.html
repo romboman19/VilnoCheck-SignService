@@ -45,9 +45,12 @@
                 </span>
               </label>
 
-                <span class="small">
-                </span>
-              </label>
+
+ <label class="method-card" data-method="cloud-kep">
+ <input type="radio" name="signingMethod" value="cloud-kep" id="methodCloudKep">
+ <strong>Хмарний КЕП</strong>
+ <span class="small">Дія, ПриватБанк, Вчасно...</span>
+ </label>
             </div>
             <div class="note" style="margin-top: 14px;">
               <strong>Важливо:</strong> приватний ключ і пароль залишаються на робочому місці.
@@ -93,6 +96,27 @@
 
               </div>
           </section>
+
+ <section class="panel" id="cloudPanel" hidden>
+ <div class="panel__body">
+ <div class="form-group">
+ <label for="cloudProviderSelect">КНЕДП</label>
+ <select id="cloudProviderSelect" class="form-control">
+ <option value="">— Оберіть провайдера —</option>
+ </select>
+ </div>
+ <div class="form-group">
+ <label for="cloudUserId">Ідентифікатор (РНОКПП або телефон)</label>
+ <input type="text" id="cloudUserId" class="form-control" placeholder="1234567890 або +380..." autocomplete="off" inputmode="numeric">
+ </div>
+ <div id="cloudKeyMediaWrap" hidden>
+ <label for="cloudKeyMediaSelect">Оберіть ключ</label>
+ <select id="cloudKeyMediaSelect" class="form-control"></select>
+ </div>
+ <button id="cloudReadKeyBtn" class="btn btn--primary" type="button">Зчитати ключ</button>
+ <p id="cloudStatus" class="cloud-status"></p>
+ </div>
+ </section>
 
           <section class="panel">
             <h2>3. Завантаження документа</h2>
@@ -172,6 +196,19 @@
               Ключ ще не зчитано.
             </div>
           </section>
+
+ <section class="panel" id="cloudPanelKey" hidden>
+ <div class="panel__body">
+ <div id="cloudTwoFactorWrap" hidden>
+ <p>Підтвердьте операцію в застосунку вашого КНЕДП. Якщо отримали SMS-код — введіть нижче:</p>
+ <div class="form-group">
+ <label for="cloudTwoFactorInput">Код OTP</label>
+ <input type="text" id="cloudTwoFactorInput" class="form-control" inputmode="numeric" maxlength="8" autocomplete="one-time-code">
+ </div>
+ <button id="cloudTwoFactorSubmit" class="btn btn--primary" type="button">Підтвердити</button>
+ </div>
+ </div>
+ </section>
 
           <section class="panel">
             <h2>5. Підпис і пакет</h2>
