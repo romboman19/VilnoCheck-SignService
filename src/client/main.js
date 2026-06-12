@@ -293,15 +293,9 @@ function applyBootstrap(bootstrap) {
   if (!bootstrap || typeof bootstrap !== 'object') return;
   state.bootstrap = bootstrap;
 
-  }
-
-    : null;
-
-  }
-
 }
-
 async function loadBootstrap() {
+
   const response = await fetch('/api/bootstrap');
   const payload = await response.json();
   if (!response.ok || !payload?.bootstrap) {
