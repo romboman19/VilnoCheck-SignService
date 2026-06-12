@@ -12,7 +12,6 @@
         <div class="badges">
           <span class="badge">IIT token</span>
           <span class="badge">PrivatBank JKS</span>
-          <span class="badge">SmartID / cloud KEP</span>
           <span class="badge">CAdES detached</span>
         </div>
         <h1>Підпис документів для VilnoCheck</h1>
@@ -20,7 +19,6 @@
           Сервіс підписує документ локально на робочому місці та формує ZIP-пакет із оригіналом,
           відокремленим підписом і метаданими. Підтримуються три режими: апаратний токен через IIT
           browser integration, файловий ключ PrivatBank у форматі <span class="code">.jks</span>
-          та хмарний підпис PrivatBank SmartID через QR / Privat24.
         </p>
       </section>
 
@@ -47,11 +45,7 @@
                 </span>
               </label>
 
-              <label class="method-card" data-method="smartid">
-                <input type="radio" name="signingMethod" value="smartid" />
-                <span class="method-card-title">SmartID / хмарний підпис</span>
                 <span class="small">
-                  Експериментальний QR / Privat24 режим через browser crypto library: канонічний method id у сервісі — <span class="code">smartid</span>, а сам провайдер поки що прив'язаний до PrivatBank SmartID.
                 </span>
               </label>
             </div>
@@ -97,18 +91,7 @@
               <div id="fileModeStatus" class="status-box"></div>
             </div>
 
-            <div id="smartIdPanel" class="panel-stack hidden">
-              <div class="note">
-                <strong>Для SmartID режиму:</strong>
-                <ul>
-                  <li>потрібен сучасний браузер із web worker та доступом до PrivatBank SmartID API</li>
-                  <li>ключ залишається у хмарному провайдері; на ПК немає локального <span class="code">.jks</span> або токена</li>
-                  <li>підтвердження зчитування сертифіката та підпису відбувається через QR / deep link у Privat24</li>
-                  <li>статус нижче чесно показує: що вже працює, а що ще треба підтвердити на реальному акаунті</li>
-                </ul>
               </div>
-              <div id="smartIdStatus" class="status-box">Завантажую конфігурацію SmartID…</div>
-            </div>
           </section>
 
           <section class="panel">
@@ -183,16 +166,7 @@
               </div>
             </div>
 
-            <div id="smartIdPanelKey" class="panel-stack hidden" data-method-panel="smartid" style="margin-top: 14px;">
-              <div class="note">
-                <strong>Крок 1.</strong> Натисніть <span class="code">Зчитати ключ / сертифікат</span> — сервіс запросить у SmartID
-                публічну інформацію про ключ і покаже QR / deep link для підтвердження в Privat24.<br />
-                <strong>Крок 2.</strong> Після успішного зчитування натисніть <span class="code">Підписати документ</span> — буде окреме підтвердження підпису.
               </div>
-              <div id="smartIdConfirmStatus" class="status-box">
-                SmartID QR / deep link ще не сформовано.
-              </div>
-            </div>
 
             <div id="keyStatus" class="status-box" style="margin-top: 14px;">
               Ключ ще не зчитано.
