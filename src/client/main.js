@@ -164,10 +164,6 @@ function currentMethodState() {
     };
   }
 
- : null,
-      } : null
-    };
-  }
 
   return {
     keyMedia: state.readedKey ? redactKeyMediaForUpload(state.readedKey.keyMedia) : null,
