@@ -894,8 +894,6 @@ async function initialize() {
     log(`УВАГА: bootstrap init failed: ${error?.message || String(error)}`);
   }
 
-    });
-  }
 
   await setSigningMethod(normalizeSigningMethod(state.bootstrap?.defaults?.signingMethod || state.signingMethod), { persist: false });
 
