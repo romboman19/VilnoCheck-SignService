@@ -92,10 +92,11 @@ async function generateSignatureProtocol(data) {
     });
   };
 
-  // Допоміжна функція для друку лінії
+  // Допоміжна функція для друку лінії — повертає нову y
   const drawLine = (label, value, yPos) => {
     drawText(label + ':', leftMargin, yPos, 11, true);
     drawText(String(value || '—'), leftMargin + 220, yPos, 11);
+    return yPos - lineHeight;
   };
 
   // Допоміжна функція для друку довгих значень
@@ -148,46 +149,37 @@ async function generateSignatureProtocol(data) {
   // Розділ 1: Підписаний документ
   drawText('1. ПІДПИСАНИЙ ДОКУМЕНТ', leftMargin, y, 13, true);
   y -= lineHeight;
-  drawLine('Назва файлу', document?.fileName);
-  y -= lineHeight;
-  drawLine('Розмір', document?.size ? (document.size / 1024).toFixed(1) + ' КБ' : null);
-  y -= lineHeight;
+  y = drawLine('Назва файлу', document?.fileName, y);
+  y = drawLine('Розмір', document?.size ? (document.size / 1024).toFixed(1) + ' КБ' : null, y);
   y = drawLongValue('SHA-256', document?.sha256, y);
   y -= lineHeight * 1.5;
 
   // Розділ 2: Підписувач
   drawText('2. ПІДПИСУВАЧ', leftMargin, y, 13, true);
   y -= lineHeight;
-  drawLine('ПІБ', signer?.subjCN);
-  y -= lineHeight;
-  drawLine('РНОКПП', signer?.subjDRFOCode);
-  y -= lineHeight;
+  y = drawLine('ПІБ', signer?.subjCN, y);
+  y = drawLine('РНОКПП', signer?.subjDRFOCode, y);
 
   // ЄДРПОУ тільки якщо є
   if (signer?.subjEDRPOUCode) {
-    drawLine('ЄДРПОУ', signer.subjEDRPOUCode);
-    y -= lineHeight;
+    y = drawLine('ЄДРПОУ', signer.subjEDRPOUCode, y);
   }
 
-  drawLine('Email', signer?.subjEMail);
-  y -= lineHeight;
-  drawLine('Телефон', signer?.subjPhone);
-  y -= lineHeight;
+  y = drawLine('Email', signer?.subjEMail, y);
+  y = drawLine('Телефон', signer?.subjPhone, y);
 
   // Місто: locality + state
   const city = [signer?.subjLocality, signer?.subjState].filter(Boolean).join(', ');
-  drawLine('Місто', city || null);
-  y -= lineHeight * 1.5;
+  y = drawLine('Місто', city || null, y);
+  y -= lineHeight * 0.5;
 
   // Розділ 3: Сертифікат
   drawText('3. СЕРТИФІКАТ', leftMargin, y, 13, true);
   y -= lineHeight;
-  drawLine('КНЕДП', signer?.issuerCN);
-  y -= lineHeight;
-  drawLine('Серійний номер', signer?.serial);
-  y -= lineHeight;
-  drawLine('Метод підпису', humanMethod(signingMethod));
-  y -= lineHeight * 1.5;
+  y = drawLine('КНЕДП', signer?.issuerCN, y);
+  y = drawLine('Серійний номер', signer?.serial, y);
+  y = drawLine('Метод підпису', humanMethod(signingMethod), y);
+  y -= lineHeight * 0.5;
 
   // Розділ 4: Підпис
   drawText('4. ПІДПИС', leftMargin, y, 13, true);
@@ -195,14 +187,13 @@ async function generateSignatureProtocol(data) {
 
   const sig = signatures?.cadesDetached;
   if (sig) {
-    drawLine('Час підпису (UTC)', sig?.timestamp || signatures?.generatedAt);
-    y -= lineHeight;
-    drawLine('Файл підпису', sig?.fileName);
-    y -= lineHeight;
+    // Використовуємо signedAt з даних, або timestamp з signatures
+    const timeValue = data.signedAt || sig?.timestamp || signatures?.generatedAt;
+    y = drawLine('Час підпису (UTC)', timeValue, y);
+    y = drawLine('Файл підпису', sig?.fileName, y);
     y = drawLongValue('SHA-256 підпису', sig?.sha256, y);
     y -= lineHeight;
-    drawLine('Формат', 'CAdES-X Long (відокремлений)');
-    y -= lineHeight;
+    y = drawLine('Формат', 'CAdES-X Long (відокремлений)', y);
   } else {
     drawText('• Інформація про підпис недоступна', leftMargin + 10, y, 11);
     y -= lineHeight;

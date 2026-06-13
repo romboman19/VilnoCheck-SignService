@@ -583,6 +583,7 @@ app.get('/api/documents/:documentId/package', requireApiKey, async (req, res, ne
         signatures: signaturesManifest,
         signingMethod: record.signature?.signingMethod || record.session?.signingMethod,
         verification: record.signature?.verification || null,
+        signedAt: record.signature?.signatureInfo?.DateTimeStr || record.session?.updatedAt || null,
         documentId: documentId
       };
       const protocolResult = await generateSignatureProtocol(protocolData);
