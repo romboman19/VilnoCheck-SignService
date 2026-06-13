@@ -70,32 +70,42 @@ const state = {
 };
 
 
+const KSP_PROVIDERS = [
+  {
+    label: '"Дія". Кваліфікований надавач електронних довірчих послуг',
+    kspSettings: {
+      id: 'diia-sign', name: 'Дія.Підпис', ksp: 7,
+      directAccess: false, mobileAppName: 'Дія',
+      address: 'https://diia-sign.it.ua/KSPSign',
+      systemId: 'diia-sign-it-ent', codeEDRPOU: '43395033',
+      needQRCode: true
+    }
+  },
+  {
+    label: 'КНЕДП АЦСК АТ КБ "ПРИВАТБАНК"',
+    kspSettings: {
+      id: 'pb-smartid', name: 'ПриватБанк SmartID', ksp: 6,
+      directAccess: true,
+      address: 'https://acsk.privatbank.ua/cloud/api/back/',
+      clientIdPrefix: 'IEIS_',
+      confirmationURL: 'https://www.privat24.ua/rd/kep',
+      codeEDRPOU: '14360570', needQRCode: true
+    }
+  },
+  {
+    label: 'DepositSign',
+    kspSettings: {
+      id: 'depositsign', name: 'DepositSign', ksp: 6,
+      address: 'https://depositsign.com/api/v1/it-enterprise/sign-server',
+      codeEDRPOU: '', needQRCode: false
+    }
+  }
+];
+
 function buildKspProviders(cas) {
-  const kspTypeMap = [
-    { match: (ca) => /дія|informjust/i.test(JSON.stringify(ca)), ksp: 'DIIA' },
-    { match: (ca) => /приватбанк|privatbank/i.test(JSON.stringify(ca)), ksp: 'PB' },
-    { match: (ca) => /ukey/i.test(JSON.stringify(ca)), ksp: 'UKey' },
-    { match: (ca) => /kyivstar/i.test(JSON.stringify(ca)), ksp: 'Kyivstar' },
-    { match: (ca) => /vodafone/i.test(JSON.stringify(ca)), ksp: 'Vodafone' },
-    { match: (ca) => /lifecell/i.test(JSON.stringify(ca)), ksp: 'Lifecell' },
-  ];
-  return (cas || [])
-    .filter(ca => ca.cmpAddress)
-    .map(ca => {
-      const found = kspTypeMap.find(m => m.match(ca));
-      return {
-        label: (ca.issuerCNs && ca.issuerCNs[0]) || ca.name || ca.id,
-        kspSettings: {
-          name: (ca.issuerCNs && ca.issuerCNs[0]) || ca.name,
-          ksp: found ? found.ksp : 'IIT',
-          address: ca.cmpAddress,
-          port: ca.cmpPort || '8080',
-          directAccess: ca.directAccess || false,
-          codeEDRPOU: ca.codeEDRPOU || ''
-        }
-      };
-    });
+  return KSP_PROVIDERS;
 }
+
 
 function normalizeSigningMethod(method) {
   const value = String(method || '').trim();
@@ -441,7 +451,6 @@ async function getSigner() {
 
 async function ensureFileLibraryReady() {
   const signer = await getSigner();
-  await signer.setLibraryType(DigitalSignatureKeyType.File);
   if (!state.cas.length) {
     state.cas = await signer.getCAs();
     populateCAs();
@@ -573,7 +582,6 @@ async function detectAgent() {
   let retries = 0;
   while (retries < 3) {
     try {
-      await signer.setLibraryType(DigitalSignatureKeyType.Token);
       break;
     } catch (e) {
       retries++;
@@ -798,39 +806,36 @@ function renderKeyMediaSelect(medias) {
   cloudKeyMediaSel.hidden = false;
 }
 
+
+function renderQrCode(base64) {
+  var img = document.getElementById('cloudQrImage');
+  if (!img) {
+    img = document.createElement('img');
+    img.id = 'cloudQrImage';
+    img.style.cssText = 'display:block;margin:8px auto;max-width:220px;border-radius:4px;';
+    if (cloudStatusEl && cloudStatusEl.parentNode) {
+      cloudStatusEl.parentNode.insertBefore(img, cloudStatusEl.nextSibling);
+    }
+  }
+  img.src = base64;
+  img.hidden = false;
+}
+
+function hideQrCode() {
+  var img = document.getElementById('cloudQrImage');
+  if (img) img.hidden = true;
+}
+
 async function readCloudKey() {
   const provider = state.cloudKep.selectedProvider;
   if (!provider) {
     showCloudStatus('Оберіть КНЕДП', 'error');
     return;
   }
-
-  const userId = (typeof cloudUserIdInput !== 'undefined' && cloudUserIdInput)
-    ? cloudUserIdInput.value.trim()
-    : '';
-  if (!userId) {
-    showCloudStatus('Введіть ідентифікатор (РНОКПП або телефон)', 'error');
-    return;
-  }
-
-  state.cloudKep.userId = userId;
-
+  hideQrCode();
   try {
-    showCloudStatus('Отримання списку ключів...', 'info');
-    const medias = await getSigner().getKeyMediasKSP(provider.kspSettings, null);
-    state.cloudKep.keyMedias = medias || [];
-
-    if (state.cloudKep.keyMedias.length > 1) {
-      renderKeyMediaSelect(state.cloudKep.keyMedias);
-      showCloudStatus('Оберіть ключ зі списку', 'info');
-      return;
-    }
-
-    state.cloudKep.selectedKeyId =
-      (state.cloudKep.keyMedias[0] && (state.cloudKep.keyMedias[0].id || state.cloudKep.keyMedias[0].serial)) || null;
-
+    showCloudStatus('Підготовка з\u0027єднання...', 'info');
     await doReadPrivateKeyKSP();
-
   } catch (err) {
     const msg = (err && err.message) ? err.message : String(err);
     showCloudStatus('Помилка: ' + msg, 'error');
@@ -841,30 +846,36 @@ async function doReadPrivateKeyKSP() {
   const provider = state.cloudKep.selectedProvider;
   if (!provider) return;
 
-  showCloudStatus(
-    'Очікуємо підтвердження в застосунку ' + provider.label + '...',
-    'waiting'
-  );
+  // Підписатись на QR ПЕРЕД readPrivateKeyKSP (обов'язково)
+  await getSigner().addConfirmKSPOperationEventListener(function(ev) {
+    if (ev && ev.qrCode) {
+      showCloudStatus('Відскануйте QR або відкрийте ' + (ev.mobileAppName || 'застосунок'), 'waiting');
+      renderQrCode(ev.qrCode);
+    } else if (ev && ev.url) {
+      showCloudStatus('Підтвердіть у ' + (ev.mobileAppName || 'застосунку'), 'waiting');
+    } else {
+      showCloudStatus('Очікуємо підтвердження...', 'waiting');
+    }
+  });
+
+  showCloudStatus('Очікуємо підтвердження...', 'waiting');
   state.cloudKep.awaitingConfirmation = true;
 
   try {
     await getSigner().readPrivateKeyKSP(
       provider.kspSettings,
-      state.cloudKep.userId,
-      true,
-      state.cloudKep.selectedKeyId,
-      null
+      null,   // userId = null для QR-провайдерів (Дія, ПриватБанк)
+      false   // getCerts = false (true = ще одне підтвердження)
     );
 
     state.cloudKep.awaitingConfirmation = false;
-    showCloudStatus('Ключ зчитано успішно', 'success');
-
-    if (typeof updateUiAfterKeyRead === 'function') {
-      updateUiAfterKeyRead();
-    }
+    hideQrCode();
+    showCloudStatus('Ключ зчитано успішно \u2713', 'success');
+    if (typeof updateUiAfterKeyRead === 'function') updateUiAfterKeyRead();
 
   } catch (err) {
     state.cloudKep.awaitingConfirmation = false;
+    hideQrCode();
 
     if (isTwoFactorError(err)) {
       state.cloudKep.awaitingTwoFactor = true;
