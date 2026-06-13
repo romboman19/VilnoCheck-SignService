@@ -585,8 +585,8 @@ app.get('/api/documents/:documentId/package', requireApiKey, async (req, res, ne
         verification: record.signature?.verification || null,
         documentId: documentId
       };
-      const protocolPdf = await generateSignatureProtocol(protocolData);
-      archive.append(protocolPdf, { name: "protocol.pdf" });
+      const protocolResult = await generateSignatureProtocol(protocolData);
+      archive.append(protocolResult.buffer, { name: protocolResult.fileName });
     } catch (err) {
       console.error("[protocol] Failed to generate PDF protocol:", err.message);
     }
