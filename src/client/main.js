@@ -932,19 +932,57 @@ async function signDocument() {
   }
 
   const signer = await getSigner();
-  const signType = new EndUserSignContainerInfo();
-  signType.type = EndUserConstants.EndUserSignContainerType.CAdES;
-  signType.subType = EndUserConstants.EndUserCAdESType.Detached;
-  signType.signLevel = EndUserConstants.EndUserSignType.CAdES_X_Long;
-
   const data = base64ToUint8Array(state.document.signingPayloadBase64);
 
-  let signature;
+  // 1. CAdES Detached (основний)
+  const signTypeDetached = new EndUserSignContainerInfo();
+  signTypeDetached.type = EndUserConstants.EndUserSignContainerType.CAdES;
+  signTypeDetached.subType = EndUserConstants.EndUserCAdESType.Detached;
+  signTypeDetached.signLevel = EndUserConstants.EndUserSignType.CAdES_X_Long;
+
+  let detachedResult;
   try {
-    signature = await signer.signDataEx(data, signType);
-  } finally {
+    detachedResult = await signer.signDataEx(data, signTypeDetached);
+  } catch (e) {
+    console.error('CAdES Detached failed:', e);
+    throw e;
   }
-  state.lastSignature = signature;
+  state.lastSignature = detachedResult;
+
+  // 2. CAdES Enveloped (той самий ключ, інший subType)
+  let envelopedB64 = null;
+  try {
+    const signTypeEnveloped = new EndUserSignContainerInfo();
+    signTypeEnveloped.type = EndUserConstants.EndUserSignContainerType.CAdES;
+    signTypeEnveloped.subType = EndUserConstants.EndUserCAdESType.Enveloped;
+    signTypeEnveloped.signLevel = EndUserConstants.EndUserSignType.CAdES_X_Long;
+    const envelopedResult = await signer.signDataEx(data, signTypeEnveloped);
+    envelopedB64 = envelopedResult.Sign;
+  } catch (e) {
+    console.warn('CAdES Enveloped не вдався:', e.message);
+  }
+
+  // 3. PAdES (тільки для PDF)
+  let padesB64 = null;
+  const isPdf = state.document?.mimeType === 'application/pdf' || state.document?.fileName?.toLowerCase().endsWith('.pdf');
+  if (isPdf) {
+    try {
+      const signTypePades = new EndUserSignContainerInfo();
+      signTypePades.type = EndUserConstants.EndUserSignContainerType.PAdES;
+      signTypePades.signLevel = EndUserConstants.EndUserSignType.CAdES_X_Long;
+      const padesResult = await signer.signDataEx(data, signTypePades);
+      padesB64 = padesResult.Sign;
+    } catch (e) {
+      console.warn('PAdES не вдався:', e.message);
+    }
+  }
+
+  // Формуємо signatures об'єкт
+  const signatures = {
+    cadesDetached: detachedResult.Sign,
+    cadesEnveloped: envelopedB64,
+    pades: padesB64
+  };
 
   const methodState = currentMethodState();
   const signerSummary = summarizeLoadedSigner();
@@ -952,9 +990,9 @@ async function signDocument() {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({
-      signatureBase64: signature.Sign,
+      signatures: signatures,
       signatureFileName: `${state.document.fileName}.p7s`,
-      signatureInfo: signature.SignatureInfo,
+      signatureInfo: detachedResult.SignatureInfo,
       signingMethod: state.signingMethod,
       methodState,
       keyMedia: state.signingMethod === SIGNING_METHOD.IIT_TOKEN ? redactKeyMediaForUpload(state.readedKey.keyMedia) : null,
@@ -981,8 +1019,8 @@ async function signDocument() {
     <div class="status-line"><span class="dot ok"></span><strong>Документ підписано</strong></div>
     <div class="small" style="margin-top: 10px;">
       Метод: <span class="code">${escapeHtml(humanSigningMethod(state.signingMethod))}</span><br />
-      Підписувач: <span class="code">${escapeHtml(signature.SignatureInfo?.Signer || signerSummary.subjCN || '—')}</span><br />
-      Час підпису: <span class="code">${escapeHtml(signature.SignatureInfo?.DateTimeStr || '—')}</span><br />
+      Підписувач: <span class="code">${escapeHtml(detachedResult.SignatureInfo?.Signer || signerSummary.subjCN || '—')}</span><br />
+      Час підпису: <span class="code">${escapeHtml(detachedResult.SignatureInfo?.DateTimeStr || '—')}</span><br />
       Підпис збережено на сервері, можна завантажити ZIP-пакет.
     </div>
   `);
