@@ -82,7 +82,8 @@ async function generateSignatureProtocol(data) {
     signingMethod,
     verification,
     documentId,
-    signedAt
+    signedAt,
+    cert
   } = data;
 
   const dateStr = generatedAt ? formatDate(generatedAt) : formatDate(new Date().toISOString());
@@ -186,7 +187,7 @@ async function generateSignatureProtocol(data) {
   y = drawLine('Назва файлу', document?.originalName, y);
   y = drawLine('Розмір', document?.size ? (document.size / 1024).toFixed(1) + ' КБ' : null, y);
   y = drawLongValue('SHA-256', document?.sha256, y);
-  y = drawLine('Результат верифікації', isValid ? 'Дійсний' : 'Недійсний', y);
+  y = drawLine('Результат верифікації', isValid ? 'Підпис створено та перевірено успішно. Цілісність даних підтверджено' : 'Перевірка підпису не пройшла', y);
   y -= lineHeight * 0.5;
 
   // БЛОК 3: Підписувач
@@ -222,24 +223,25 @@ async function generateSignatureProtocol(data) {
   }
   y -= lineHeight * 0.5;
 
-  // БЛОК 6: Згенеровані формати
-  drawText('6. ЗГЕНЕРОВАНІ ФОРМАТИ', leftMargin, y, 13, true);
-  y -= lineHeight;
-  if (signatures) {
-    if (signatures.cadesDetached) {
+  // БЛОК 6: Згенеровані формати — показуємо тільки якщо є кілька форматів
+  const formatCount = [signatures?.cadesDetached, signatures?.cadesEnveloped, signatures?.pades].filter(Boolean).length;
+  if (formatCount > 1) {
+    drawText('6. ЗГЕНЕРОВАНІ ФОРМАТИ', leftMargin, y, 13, true);
+    y -= lineHeight;
+    if (signatures?.cadesDetached) {
       drawText('• CAdES Detached (відокремлений)', leftMargin + 10, y, 11, true);
       y -= lineHeight;
     }
-    if (signatures.cadesEnveloped) {
+    if (signatures?.cadesEnveloped) {
       drawText('• CAdES Enveloped (вбудований)', leftMargin + 10, y, 11, true);
       y -= lineHeight;
     }
-    if (signatures.pades) {
+    if (signatures?.pades) {
       drawText('• PAdES (PDF-вбудований)', leftMargin + 10, y, 11, true);
       y -= lineHeight;
     }
+    y -= lineHeight;
   }
-  y -= lineHeight;
 
   // Футер
   drawText('Для перевірки підпису: https://czo.gov.ua або https://eu.iit.com.ua', leftMargin, 50, 9);
