@@ -586,6 +586,7 @@ app.get('/api/documents/:documentId/package', requireApiKey, async (req, res, ne
         signedAt: record.signature?.signatureInfo?.DateTimeStr || record.session?.updatedAt || null,
         documentId: documentId
       };
+      console.log("[protocol] document:", JSON.stringify(protocolData.document));
       const protocolResult = await generateSignatureProtocol(protocolData);
       archive.append(protocolResult.buffer, { name: protocolResult.fileName });
     } catch (err) {

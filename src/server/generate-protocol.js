@@ -38,6 +38,17 @@ function humanMethod(m) {
 }
 
 /**
+ * Обрізає довгий текст
+ * @param {string} str - Текст
+ * @param {number} maxChars - Максимальна довжина
+ * @returns {string} - Обрізаний текст
+ */
+function truncate(str, maxChars) {
+  if (!str) return '—';
+  return str.length > maxChars ? str.substring(0, maxChars - 1) + '…' : str;
+}
+
+/**
  * Генерує PDF-протокол перевірки електронного підпису через pdf-lib
  * з підтримкою кирилиці через вбудований шрифт
  * @param {Object} data - Дані для протоколу
@@ -176,7 +187,7 @@ async function generateSignatureProtocol(data) {
   // Розділ 3: Сертифікат
   drawText('3. СЕРТИФІКАТ', leftMargin, y, 13, true);
   y -= lineHeight;
-  y = drawLine('КНЕДП', signer?.issuerCN, y);
+  y = drawLine("КНЕДП", truncate(signer?.issuerCN, 60), y);
   y = drawLine('Серійний номер', signer?.serial, y);
   y = drawLine('Метод підпису', humanMethod(signingMethod), y);
   y -= lineHeight * 0.5;
@@ -188,7 +199,7 @@ async function generateSignatureProtocol(data) {
   const sig = signatures?.cadesDetached;
   if (sig) {
     // Використовуємо signedAt з даних, або timestamp з signatures
-    const timeValue = data.signedAt || sig?.timestamp || signatures?.generatedAt;
+    const timeValue = data.signedAt ? formatDate(data.signedAt) : (sig?.timestamp || signatures?.generatedAt);
     y = drawLine('Час підпису (UTC)', timeValue, y);
     y = drawLine('Файл підпису', sig?.fileName, y);
     y = drawLongValue('SHA-256 підпису', sig?.sha256, y);
