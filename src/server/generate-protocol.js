@@ -160,7 +160,7 @@ async function generateSignatureProtocol(data) {
   // Розділ 1: Підписаний документ
   drawText('1. ПІДПИСАНИЙ ДОКУМЕНТ', leftMargin, y, 13, true);
   y -= lineHeight;
-  y = drawLine('Назва файлу', document?.fileName, y);
+  y = drawLine('Назва файлу', document?.originalName, y);
   y = drawLine('Розмір', document?.size ? (document.size / 1024).toFixed(1) + ' КБ' : null, y);
   y = drawLongValue('SHA-256', document?.sha256, y);
   y -= lineHeight * 1.5;
@@ -246,8 +246,8 @@ async function generateSignatureProtocol(data) {
   const pdfBytes = await pdfDoc.save();
 
   // Формуємо назву файлу протоколу
-  const baseName = document?.fileName
-    ? path.basename(document.fileName, path.extname(document.fileName))
+  const baseName = document?.originalName
+    ? path.basename(document?.originalName, path.extname(document?.originalName))
     : 'document';
   const protocolFileName = `${baseName}_протокол.pdf`;
 
