@@ -541,10 +541,10 @@ async function setSigningMethod(method, { persist = true } = {}) {
 
   els.tokenPanel.classList.toggle('hidden', state.signingMethod !== SIGNING_METHOD.IIT_TOKEN);
   els.jksPanel.classList.toggle('hidden', state.signingMethod !== SIGNING_METHOD.PRIVATBANK_JKS);
+  if (cloudPanel) cloudPanel.hidden = (method !== SIGNING_METHOD.CLOUD_KEP);
+  if (cloudPanelKey) cloudPanelKey.hidden = (method !== SIGNING_METHOD.CLOUD_KEP);
   els.tokenKeyPanel.classList.toggle('hidden', state.signingMethod !== SIGNING_METHOD.IIT_TOKEN);
   els.jksKeyPanel.classList.toggle('hidden', state.signingMethod !== SIGNING_METHOD.PRIVATBANK_JKS);
-  if (cloudPanel) cloudPanel.classList.toggle('hidden', state.signingMethod !== SIGNING_METHOD.CLOUD_KEP);
-  if (cloudPanelKey) cloudPanelKey.classList.toggle('hidden', state.signingMethod !== SIGNING_METHOD.CLOUD_KEP);
 
   els.pinInput.value = '';
   els.jksPasswordInput.value = '';
