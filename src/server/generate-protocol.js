@@ -217,7 +217,7 @@ async function generateSignatureProtocol(data) {
   y = drawLine('Формат підпису', 'З повними даними ЦСК для перевірки (CAdES-X Long)', y);
   
   // Версія сертифіката (дата видачі) — якщо є
-  if (signer?.validFrom) {
+  if (cert?.validFrom) {
     y = drawLine('Дійсний з', formatDate(signer.validFrom), y);
   }
   y -= lineHeight * 0.5;

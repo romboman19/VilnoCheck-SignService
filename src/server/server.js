@@ -580,6 +580,7 @@ app.get('/api/documents/:documentId/package', requireApiKey, async (req, res, ne
         version: serviceVersion,
         document: record.document,
         signer: record.signature?.signatureInfo?.OwnerInfo || record.session?.signer || null,
+        cert: record.signature?.signatureInfo?.cert || null,
         signatures: signaturesManifest,
         signingMethod: record.signature?.signingMethod || record.session?.signingMethod,
         verification: record.signature?.verification || null,
