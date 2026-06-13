@@ -378,6 +378,11 @@ app.post('/api/documents/:documentId/signature', requireApiKey, async (req, res,
     } = req.body || {};
     // signatures can be either:    // - object: { cadesDetached, cadesEnveloped, pades }
     // - array: [{ format, type, data }, ...]
+    // Fallback: старий формат клієнта (v1)
+    if (!signatures && req.body.signatureBase64) {
+      signatures = { cadesDetached: req.body.signatureBase64 };
+    }
+
     if (!signatures || typeof signatures !== 'object') {
       return res.status(400).json({ error: 'signatures object or array is required' });
     }
