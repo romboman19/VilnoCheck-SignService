@@ -569,7 +569,18 @@ async function detectAgent() {
     throw new Error('IIT web integration не підтримується або не встановлена.');
   }
 
-  await signer.setLibraryType(DigitalSignatureKeyType.Token);
+  // Retry logic for first-time initialization
+  let retries = 0;
+  while (retries < 3) {
+    try {
+      await signer.setLibraryType(DigitalSignatureKeyType.Token);
+      break;
+    } catch (e) {
+      retries++;
+      if (retries >= 3) throw e;
+      await new Promise(r => setTimeout(r, 500));
+    }
+  }
   state.cas = await signer.getCAs();
   state.keyMedias = await signer.getKeyMedias();
   populateCAs();
